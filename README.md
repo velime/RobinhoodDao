@@ -45,6 +45,10 @@ X используется **только для новостей и мнени�
 
 ## Запуск
 
+> **Windows без командной строки:** пошаговая инструкция — [`docs/windows.md`](docs/windows.md)
+> (`install.bat` → `check.bat` → `tg_login.bat` / `tg_scan.bat` → `start.bat`).
+> Проверить настройки на любой системе: `python -m swarm.check`.
+
 1. **Бот в Telegram.** Напиши [@BotFather](https://t.me/BotFather) → `/newbot` → получи токен.
 2. **Основная модель — Gemini (бесплатно).**
    - Открой <https://aistudio.google.com/apikey>, войди в Google-аккаунт → **Create API key**.

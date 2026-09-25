@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
-load_dotenv()
+load_dotenv(find_dotenv(usecwd=True))
 
 
 # Crypto news feeds and influencers on X. Override with X_ACCOUNTS in .env.
