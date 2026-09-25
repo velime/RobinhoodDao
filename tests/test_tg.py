@@ -126,3 +126,15 @@ def test_toolbox_registers_telegram_tool(tmp_path):
     assert "telegram_channels" not in Toolbox(Settings(exchanges=())).tools
     tb = Toolbox(Settings(exchanges=()), tg_store=_store(tmp_path))
     assert "telegram_channels" in tb.tools
+
+
+def test_save_env_updates_and_appends(tmp_path):
+    from swarm.tg.__main__ import save_env
+
+    p = tmp_path / ".env"
+    p.write_text("A=1\nTG_API_ID=\n# comment\n", encoding="utf-8")
+    save_env(str(p), {"TG_API_ID": "42", "TG_API_HASH": "abc"})
+    assert p.read_text(encoding="utf-8") == "A=1\nTG_API_ID=42\n# comment\nTG_API_HASH=abc\n"
+    new = tmp_path / "new.env"
+    save_env(str(new), {"X": "1"})
+    assert new.read_text(encoding="utf-8") == "X=1\n"

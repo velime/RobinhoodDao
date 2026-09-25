@@ -11,7 +11,6 @@ import argparse
 import asyncio
 import logging
 import os
-import sys
 
 from ..config import load_settings
 from .classify import CRYPTO, NOT_CRYPTO, REVIEW, UNAVAILABLE, Verdict, parse_channel_list
@@ -24,18 +23,60 @@ LLM_CLASSIFIER = (
 )
 
 
-def _need_api(s):
-    if not s.tg_api_id or not s.tg_api_hash:
-        sys.exit("Нужны TG_API_ID и TG_API_HASH (получить на https://my.telegram.org → API development tools)")
+def save_env(path: str, values: dict[str, str]) -> None:
+    """Set KEY=value lines in a .env file (create it if missing)."""
+    lines = open(path, encoding="utf-8").read().splitlines() if os.path.exists(path) else []
+    for k, v in values.items():
+        for i, line in enumerate(lines):
+            if line.split("=", 1)[0].strip() == k:
+                lines[i] = f"{k}={v}"
+                break
+        else:
+            lines.append(f"{k}={v}")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def _api(s) -> tuple[int, str]:
+    """api_id/api_hash from .env, or ask once and save to .env."""
+    if s.tg_api_id and s.tg_api_hash:
+        return s.tg_api_id, s.tg_api_hash
+    print(
+        "\nНужны api_id и api_hash твоего Telegram (один раз):\n"
+        "  1) открой https://my.telegram.org и войди по номеру телефона\n"
+        "  2) API development tools → заполни форму (название любое) → Create application\n"
+        "  3) скопируй App api_id и App api_hash\n"
+    )
+    while True:
+        raw_id = input("api_id (цифры): ").strip()
+        if raw_id.isdigit():
+            break
+        print("api_id — это только цифры, попробуй ещё раз")
+    api_hash = input("api_hash: ").strip()
+    save_env(".env", {"TG_API_ID": raw_id, "TG_API_HASH": api_hash})
+    print("Сохранено в .env — больше спрашивать не буду.\n")
+    return int(raw_id), api_hash
+
+
+async def _connect(s):
+    """Connected and authorized client; logs in interactively if needed."""
+    api_id, api_hash = _api(s)
+    client = make_client(api_id, api_hash, s.tg_session)
+    await client.connect()
+    if not await client.is_user_authorized():
+        print(
+            "Вход в твой Telegram (один раз). Введи номер в формате +380XXXXXXXXX.\n"
+            "Код придёт в приложение Telegram (чат «Telegram»). Если включён облачный пароль — введи и его.\n"
+        )
+        await client.start()  # спросит телефон, код и пароль 2FA
+    me = await client.get_me()
+    print(f"✅ Аккаунт: {me.first_name} (@{me.username})")
+    return client
 
 
 async def cmd_login(s) -> None:
-    _need_api(s)
-    client = make_client(s.tg_api_id, s.tg_api_hash, s.tg_session)
-    await client.start()  # спросит телефон, код из Telegram и пароль 2FA, если включён
-    me = await client.get_me()
-    print(f"✅ Вошли как {me.first_name} (@{me.username}). Сессия: {s.tg_session}.session")
-    print("Файл сессии даёт полный доступ к аккаунту — не публикуй и не коммить его.")
+    client = await _connect(s)
+    print(f"Сессия сохранена: {s.tg_session}.session — не публикуй этот файл, это доступ к аккаунту.")
     await client.disconnect()
 
 
@@ -82,17 +123,15 @@ def _write_report(path: str, items: list[dict], kept: list[str]) -> None:
 
 
 async def cmd_scan(s, args) -> None:
-    _need_api(s)
     names: list[str] = []
     if args.input and os.path.exists(args.input):
         names = parse_channel_list(open(args.input, encoding="utf-8").read())
-    client = make_client(s.tg_api_id, s.tg_api_hash, s.tg_session)
-    await client.connect()
-    if not await client.is_user_authorized():
-        sys.exit("Сначала войди: python -m swarm.tg login")
+    client = await _connect(s)
     if args.include_dialogs:
         seen = {n.lower() for n in names}
-        names += [n for n in await subscribed_channels(client) if n.lower() not in seen]
+        mine = [n for n in await subscribed_channels(client) if n.lower() not in seen]
+        print(f"Из твоих подписок добавлено каналов: {len(mine)}")
+        names += mine
     print(f"Проверяю {len(names)} каналов (по {args.posts} последних постов)…")
 
     items = []
@@ -127,13 +166,9 @@ async def cmd_scan(s, args) -> None:
 
 
 async def cmd_collect(s) -> None:
-    _need_api(s)
     names = parse_channel_list(open(s.tg_channels_file, encoding="utf-8").read())
-    client = make_client(s.tg_api_id, s.tg_api_hash, s.tg_session)
+    client = await _connect(s)
     col = Collector(client, TgStore(s.db_path), names, s.tg_poll_minutes)
-    await client.connect()
-    if not await client.is_user_authorized():
-        sys.exit("Сначала войди: python -m swarm.tg login")
     n = await col.run_once()
     print(f"✅ Собрано {n} постов из {len(names)} каналов в {s.db_path}")
     await client.disconnect()
@@ -157,6 +192,7 @@ def main() -> None:
 
     s = load_settings()
     logging.basicConfig(level=s.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.getLogger("telethon").setLevel(logging.WARNING)
     if args.cmd == "login":
         asyncio.run(cmd_login(s))
     elif args.cmd == "scan":
