@@ -21,11 +21,10 @@ async def main() -> None:
     if not s.telegram_token:
         sys.exit("TELEGRAM_BOT_TOKEN не задан (см. .env.example)")
     toolbox = Toolbox(s)
-    agent = Agent(make_backend(s), toolbox, s.timezone, s.max_steps_per_question)
+    backend = make_backend(s)
+    agent = Agent(backend, toolbox, s.timezone, s.max_steps_per_question)
     bot = SwarmBot(s, agent, Storage(s.db_path))
-    logging.getLogger("swarm").info(
-        "Swarm запущен: provider=%s model=%s tools=%s", s.llm_provider, s.llm_model, list(toolbox.tools)
-    )
+    logging.getLogger("swarm").info("Swarm запущен: llm=%s tools=%s", backend.name, list(toolbox.tools))
     try:
         await bot.run()
     finally:

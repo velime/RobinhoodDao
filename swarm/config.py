@@ -44,13 +44,23 @@ class RiskRules:
 
 
 @dataclass(frozen=True)
+class LLMConfig:
+    provider: str = "openai"  # "openai" (any OpenAI-compatible API) or "anthropic"
+    base_url: str = ""
+    api_key: str = ""
+    model: str = ""
+
+    @property
+    def name(self) -> str:
+        return f"{self.provider}:{self.model}"
+
+
+@dataclass(frozen=True)
 class Settings:
     telegram_token: str = ""
-    llm_provider: str = "openai"
-    llm_base_url: str = "https://openrouter.ai/api/v1"
-    llm_api_key: str = ""
-    llm_model: str = ""
-    anthropic_api_key: str = ""
+    llm: LLMConfig = field(default_factory=LLMConfig)
+    llm_fallback: LLMConfig | None = None
+    llm_cooldown_sec: int = 600
     max_steps_per_question: int = 12
     daily_steps_per_user: int = 50
     admin_ids: tuple[int, ...] = ()
@@ -66,14 +76,28 @@ class Settings:
     risk: RiskRules = field(default_factory=RiskRules)
 
 
+def _llm(prefix: str) -> LLMConfig | None:
+    model = os.getenv(f"{prefix}MODEL", "")
+    provider = os.getenv(f"{prefix}PROVIDER", "openai").lower()
+    if not model and provider != "anthropic":
+        return None
+    key = os.getenv(f"{prefix}API_KEY", "")
+    if provider == "anthropic":
+        key = key or os.getenv("ANTHROPIC_API_KEY", "")
+    return LLMConfig(
+        provider=provider,
+        base_url=os.getenv(f"{prefix}BASE_URL", "https://openrouter.ai/api/v1"),
+        api_key=key,
+        model=model or ("claude-opus-5" if provider == "anthropic" else ""),
+    )
+
+
 def load_settings() -> Settings:
     return Settings(
         telegram_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
-        llm_provider=os.getenv("LLM_PROVIDER", "openai").lower(),
-        llm_base_url=os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1"),
-        llm_api_key=os.getenv("LLM_API_KEY", ""),
-        llm_model=os.getenv("LLM_MODEL", ""),
-        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+        llm=_llm("LLM_") or LLMConfig(),
+        llm_fallback=_llm("FALLBACK_LLM_"),
+        llm_cooldown_sec=_int("LLM_COOLDOWN_SEC", 600),
         max_steps_per_question=_int("MAX_STEPS_PER_QUESTION", 12),
         daily_steps_per_user=_int("DAILY_STEPS_PER_USER", 50),
         admin_ids=tuple(int(x) for x in _list("ADMIN_IDS")),

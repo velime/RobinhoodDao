@@ -12,12 +12,17 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 
-from .config import Settings
+from .config import LLMConfig, Settings
 from .tools.registry import Tool
 
 log = logging.getLogger(__name__)
+
+
+class LLMError(Exception):
+    """Provider returned an unusable response."""
 
 
 @dataclass
@@ -66,7 +71,8 @@ class OpenAICompatSession(Session):
             kwargs["tool_choice"] = "auto"
         resp = await self.b.client.chat.completions.create(**kwargs, extra_headers=self.b.extra_headers)
         if not resp.choices:
-            return StepResult(text="")
+            # OpenRouter reports upstream errors as a 200 with no choices
+            raise LLMError(f"пустой ответ от {self.b.name}: {getattr(resp, 'error', None)}")
         msg = resp.choices[0].message
         calls: list[ToolCall] = []
         for tc in msg.tool_calls or []:
@@ -94,16 +100,18 @@ class OpenAICompatSession(Session):
 
 
 class OpenAICompatBackend:
-    def __init__(self, settings: Settings):
+    def __init__(self, cfg: LLMConfig):
         from openai import AsyncOpenAI
 
-        if not settings.llm_model:
+        if not cfg.model:
             raise ValueError("LLM_MODEL не задан")
-        self.model = settings.llm_model
-        self.client = AsyncOpenAI(api_key=settings.llm_api_key or "none", base_url=settings.llm_base_url)
+        self.name = cfg.name
+        self.model = cfg.model
+        # few retries: on a rate limit it is better to switch to the fallback quickly
+        self.client = AsyncOpenAI(api_key=cfg.api_key or "none", base_url=cfg.base_url, max_retries=1)
         self.extra_headers = (
             {"HTTP-Referer": "https://github.com/velime/RobinhoodDao", "X-Title": "Swarm research bot"}
-            if "openrouter" in settings.llm_base_url
+            if "openrouter" in cfg.base_url
             else {}
         )
 
@@ -175,21 +183,100 @@ class AnthropicSession(Session):
 
 
 class AnthropicBackend:
-    def __init__(self, settings: Settings):
+    def __init__(self, cfg: LLMConfig):
         import anthropic
 
-        self.model = settings.llm_model or "claude-opus-5"
+        self.name = cfg.name
+        self.model = cfg.model or "claude-opus-5"
         self.client = (
-            anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-            if settings.anthropic_api_key
-            else anthropic.AsyncAnthropic()
+            anthropic.AsyncAnthropic(api_key=cfg.api_key, max_retries=1)
+            if cfg.api_key
+            else anthropic.AsyncAnthropic(max_retries=1)
         )
 
     def new_session(self, system: str, history: list[tuple[str, str]], user: str) -> Session:
         return AnthropicSession(self, system, history, user)
 
 
+# --------------------------------------------------------------------------- Failover
+
+
+def cooldown_for(err: Exception, default: int) -> int:
+    """How long to keep the primary model off after an error, in seconds."""
+    text = str(err).lower()
+    status = getattr(err, "status_code", None)
+    if "per day" in text or "daily" in text or "quota" in text:
+        return max(default, 3600)  # daily quota: wait longer
+    if status == 429 or "rate limit" in text:
+        return min(default, 120)  # per-minute limit: retry soon
+    return default
+
+
+class FailoverSession(Session):
+    """Runs on the primary model; on any error continues on the fallback.
+
+    Between two OpenAI-compatible backends (e.g. Gemini ↔ OpenRouter) the
+    message list is shared, so the tool results already collected are kept.
+    Between different formats (Claude ↔ OpenAI-compatible) the question is
+    restarted on the fallback.
+    """
+
+    def __init__(self, fb: "FailoverBackend", system: str, history: list[tuple[str, str]], user: str):
+        self.fb = fb
+        self.args = (system, history, user)
+        self.backend = fb.fallback if fb.primary_is_down() else fb.primary
+        self.sess = self.backend.new_session(*self.args)
+
+    async def step(self, tools: list[Tool], allow_tools: bool) -> StepResult:
+        try:
+            return await self.sess.step(tools, allow_tools)
+        except Exception as e:  # noqa: BLE001
+            if self.backend is self.fb.fallback:
+                raise
+            log.warning("LLM %s failed (%s: %s) → fallback %s", self.backend.name, type(e).__name__,
+                        str(e)[:200], self.fb.fallback.name)
+            self.fb.mark_primary_down(e)
+            self._switch()
+            return await self.sess.step(tools, allow_tools)
+
+    def _switch(self) -> None:
+        old = self.sess
+        self.backend = self.fb.fallback
+        self.sess = self.backend.new_session(*self.args)
+        if type(old) is type(self.sess) and hasattr(old, "messages"):
+            self.sess.messages = old.messages
+
+    def add_results(self, results: list[tuple[ToolCall, str]]) -> None:
+        self.sess.add_results(results)
+
+    def add_user_note(self, text: str) -> None:
+        self.sess.add_user_note(text)
+
+
+class FailoverBackend:
+    def __init__(self, primary, fallback, cooldown_sec: int = 600):
+        self.primary = primary
+        self.fallback = fallback
+        self.cooldown_sec = cooldown_sec
+        self.down_until = 0.0
+        self.name = f"{primary.name} → {fallback.name}"
+
+    def primary_is_down(self) -> bool:
+        return time.monotonic() < self.down_until
+
+    def mark_primary_down(self, err: Exception) -> None:
+        self.down_until = time.monotonic() + cooldown_for(err, self.cooldown_sec)
+
+    def new_session(self, system: str, history: list[tuple[str, str]], user: str) -> Session:
+        return FailoverSession(self, system, history, user)
+
+
+def _single(cfg: LLMConfig):
+    return AnthropicBackend(cfg) if cfg.provider == "anthropic" else OpenAICompatBackend(cfg)
+
+
 def make_backend(settings: Settings):
-    if settings.llm_provider == "anthropic":
-        return AnthropicBackend(settings)
-    return OpenAICompatBackend(settings)
+    primary = _single(settings.llm)
+    if settings.llm_fallback is None:
+        return primary
+    return FailoverBackend(primary, _single(settings.llm_fallback), settings.llm_cooldown_sec)

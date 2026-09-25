@@ -18,7 +18,7 @@ class Storage:
             CREATE TABLE IF NOT EXISTS history (
                 conv TEXT NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL, ts REAL NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS history_conv ON history(conv, ts);
+            CREATE INDEX IF NOT EXISTS history_conv ON history(conv);
             CREATE TABLE IF NOT EXISTS usage (
                 user_id INTEGER NOT NULL, day TEXT NOT NULL, steps INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (user_id, day)
@@ -31,7 +31,7 @@ class Storage:
 
     def history(self, conv: str, turns: int = HISTORY_TURNS) -> list[tuple[str, str]]:
         rows = self.db.execute(
-            "SELECT role, text FROM history WHERE conv=? ORDER BY ts DESC LIMIT ?", (conv, turns * 2)
+            "SELECT role, text FROM history WHERE conv=? ORDER BY rowid DESC LIMIT ?", (conv, turns * 2)
         ).fetchall()
         rows.reverse()
         # must start with a user turn
@@ -43,7 +43,7 @@ class Storage:
         now = time.time()
         self.db.executemany(
             "INSERT INTO history(conv, role, text, ts) VALUES (?,?,?,?)",
-            [(conv, "user", question[:MAX_STORED_CHARS], now), (conv, "assistant", answer[:MAX_STORED_CHARS], now + 0.001)],
+            [(conv, "user", question[:MAX_STORED_CHARS], now), (conv, "assistant", answer[:MAX_STORED_CHARS], now)],
         )
         self.db.commit()
 
