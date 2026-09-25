@@ -70,6 +70,11 @@ class Settings:
     cryptopanic_api_key: str = ""
     twitterapi_io_key: str = ""
     x_accounts: tuple[str, ...] = ()
+    tg_api_id: int = 0
+    tg_api_hash: str = ""
+    tg_session: str = "data/telegram"
+    tg_channels_file: str = "channels/crypto.txt"
+    tg_poll_minutes: int = 10
     timezone: str = "Europe/Kyiv"
     db_path: str = "swarm.db"
     log_level: str = "INFO"
@@ -109,6 +114,11 @@ def load_settings() -> Settings:
         cryptopanic_api_key=os.getenv("CRYPTOPANIC_API_KEY", ""),
         twitterapi_io_key=os.getenv("TWITTERAPI_IO_KEY", ""),
         x_accounts=tuple(a.lstrip("@") for a in _list("X_ACCOUNTS", DEFAULT_X_ACCOUNTS)),
+        tg_api_id=_int("TG_API_ID", 0),
+        tg_api_hash=os.getenv("TG_API_HASH", ""),
+        tg_session=os.getenv("TG_SESSION", "data/telegram"),
+        tg_channels_file=os.getenv("TG_CHANNELS_FILE", "channels/crypto.txt"),
+        tg_poll_minutes=_int("TG_POLL_MINUTES", 10),
         timezone=os.getenv("TIMEZONE", "Europe/Kyiv"),
         db_path=os.getenv("DB_PATH", "swarm.db"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),

@@ -6,3 +6,6 @@ venv/
 *.db
 *.egg-info/
 .pytest_cache/
+*.session
+*.session-journal
+data/

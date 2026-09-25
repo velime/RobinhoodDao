@@ -35,6 +35,7 @@
 | `defi_protocol` | TVL и динамика | DefiLlama |
 | `market_sentiment` | Fear & Greed, доминация, тренды | alternative.me, CoinGecko |
 | `crypto_news` | заголовки крипто-СМИ | RSS, CryptoPanic (опц.) |
+| `telegram_channels` | посты крипто-каналов: упоминания монеты, что обсуждают | Telegram (твой аккаунт) |
 | `x_discussion`, `x_influencers` | новости и мнения в X (только с ключом) | twitterapi.io |
 | `web_search`, `fetch_page` | веб-поиск и чтение страниц (поиск — с ключом) | Tavily |
 | `calc_setup` | проверка и расчёт сетапа | свой код |
@@ -84,6 +85,38 @@ OpenAI-совместимый API). Основная отключается на
 поминутном лимите на 2 минуты, в остальных случаях на `LLM_COOLDOWN_SEC`. Переключения
 пишутся в лог (`LLM … failed → fallback …`). Если запасная не задана — работает только основная.
 
+### Telegram-каналы (через твой аккаунт)
+Бот читает посты крипто-каналов через сессию твоего Telegram-аккаунта (Telethon) и
+использует их как источник мнений и колов (инструмент `telegram_channels`: кто и сколько
+пишет о монете, что сейчас обсуждают). Вступать в каналы не нужно — они опрашиваются.
+
+1. Получи `api_id` и `api_hash`: <https://my.telegram.org> → **API development tools** →
+   создай приложение (название любое). Впиши в `.env` как `TG_API_ID`, `TG_API_HASH`.
+2. Войди в аккаунт (один раз, спросит телефон, код из Telegram и пароль 2FA):
+   ```bash
+   python -m swarm.tg login
+   ```
+   Появится файл `data/telegram.session`. **Он даёт полный доступ к аккаунту** — не
+   публикуй и не коммить (уже в `.gitignore`).
+3. Один раз проверь каналы из `channels/all.txt` — некриптовые отсеются:
+   ```bash
+   python -m swarm.tg scan            # добавь --include-dialogs, чтобы взять и твои подписки
+   ```
+   Смотрит 50 последних постов каждого канала и считает долю постов с крипто-лексикой
+   (тикеры, биржи, лонг/шорт, контракты, pump.fun…). Итог:
+   - `channels/crypto.txt` — оставленные каналы (их и читает бот);
+   - `channels/report.md` — таблица по каждому каналу: итог, % крипто-постов, подписчики,
+     последний пост, причина.
+
+   Пограничные (❓) по умолчанию не берутся — посмотри их в отчёте и допиши вручную в
+   `crypto.txt`, или запусти с `--llm` (доразберёт модель из `.env`) / `--keep-review`.
+   Каналы, которые не постят дольше 90 дней, уходят в пограничные (`--inactive-days`).
+4. Запусти бота как обычно — сборщик стартует сам, если заданы `TG_API_ID`/`TG_API_HASH` и
+   есть `channels/crypto.txt`. Первый проход подтягивает посты за 48 часов, дальше опрос раз
+   в `TG_POLL_MINUTES` минут. Проверить сборщик без бота: `python -m swarm.tg collect`.
+
+В Docker вход делается интерактивно: `docker run -it --env-file .env -v $(pwd)/data:/data swarm python -m swarm.tg login`.
+
 ### Группы
 Добавь бота в группу. Он отвечает, если его упомянули через `@имя_бота` или ответили
 на его сообщение. Режим приватности BotFather можно не трогать — бот и так получает
@@ -107,6 +140,8 @@ OpenAI-совместимый API). Основная отключается на
 | `EXCHANGES` | биржи ccxt |
 | `MIN_RR`, `MIN_STOP_PCT_MAJOR`, `MIN_STOP_PCT_ALT`, `MIN_STOP_ATR_MULT`, `MAJORS` | правила валидатора |
 | `TWITTERAPI_IO_KEY`, `X_ACCOUNTS` | X: ключ [twitterapi.io](https://twitterapi.io) и список аккаунтов |
+| `TG_API_ID`, `TG_API_HASH`, `TG_SESSION` | Telegram-аккаунт для чтения каналов |
+| `TG_CHANNELS_FILE`, `TG_POLL_MINUTES` | список крипто-каналов и частота опроса |
 | `TAVILY_API_KEY` | веб-поиск ([Tavily](https://tavily.com), есть бесплатный тариф) |
 | `COINGECKO_API_KEY` | демо-ключ CoinGecko (выше лимиты) |
 | `CRYPTOPANIC_API_KEY` | новости CryptoPanic |
@@ -131,7 +166,6 @@ pytest
 цикл агента и формат сообщений обоих провайдеров.
 
 ## Дальше
-- Чтение Telegram-каналов (юзербот) — после списка каналов.
 - Ончейн: потоки на биржи и разметка адресов (Arkham/Nansen), Solana/TON/Tron.
 - Индексатор Robinhood Chain.
 - Caller (автоматические колы) — по спецификации.

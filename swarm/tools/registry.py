@@ -37,8 +37,9 @@ SYM = {"type": "string", "description": "Тикер без пары: BTC, HYPE, 
 
 
 class Toolbox:
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, tg_store=None):
         self.s = settings
+        self.tg_store = tg_store
         self.pool = exch.ExchangePool(settings.exchanges)
         self.tools: dict[str, Tool] = {}
         self._register()
@@ -217,6 +218,24 @@ class Toolbox:
                 },
                 [], "🗣 Смотрю инфлюенсеров",
                 lambda topic="", hours=24: news.x_influencers(s.twitterapi_io_key, s.x_accounts, topic, int(hours)),
+            )
+        if self.tg_store is not None:
+            store = self.tg_store
+
+            async def tg_posts(query: str = "", hours: int = 24) -> dict:
+                return store.search(query, int(hours))
+
+            self._add(
+                "telegram_channels",
+                "Посты отслеживаемых крипто-Telegram-каналов (колы, мнения, шитпост): по тикеру — сколько "
+                "каналов и постов упоминают, динамика упоминаний и сами посты; без тикера — свежие посты и "
+                "самые обсуждаемые $тикеры. Это мнения авторов, НЕ источник цифр рынка.",
+                {
+                    "query": {"type": "string", "description": "Тикер или слово; пусто — что обсуждают сейчас"},
+                    "hours": {"type": "integer", "description": "За сколько часов (по умолчанию 24)"},
+                },
+                [], "💬 Читаю Telegram-каналы",
+                tg_posts,
             )
         if s.tavily_api_key:
             self._add(

@@ -10,6 +10,7 @@ dependencies = [
     "openai>=1.60",
     "anthropic>=1.0",
     "python-dotenv>=1.0",
+    "telethon>=1.36",
 ]
 
 [project.optional-dependencies]
