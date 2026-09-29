@@ -1,25 +1,28 @@
-"""Telegram CLI.
+"""Telegram CLI (все источники читаются через твой аккаунт).
 
-  python -m swarm.tg login                 — войти в свой аккаунт (один раз, создаёт файл сессии)
-  python -m swarm.tg scan [опции]          — один раз проверить каналы и оставить только крипто
-  python -m swarm.tg collect               — один проход сборщика постов (проверка)
+  python -m swarm.tg login              — войти в аккаунт (один раз, создаёт файл сессии)
+  python -m swarm.tg scan [опции]       — один раз проверить источники: крипта или нет
+  python -m swarm.tg collect [--once]   — собирать сообщения без бота (--once: только догрузить и выйти)
+  python -m swarm.tg search [ТИКЕР]     — посмотреть, что собрано (упоминания тикера / что обсуждают)
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 
 from ..config import load_settings
-from .classify import CRYPTO, NOT_CRYPTO, REVIEW, UNAVAILABLE, Verdict, parse_channel_list
-from .client import LABELS, Collector, make_client, scan_channel, subscribed_channels, verdict_label
+from .classify import CRYPTO, NOT_CRYPTO, REVIEW, UNAVAILABLE, Verdict
+from .client import LABELS, Collector, kind_of, load_dialogs, make_client, resolve, scan_source, verdict_label
+from .sources import Source, load_sources, save_sources
 from .store import TgStore
 
 LLM_CLASSIFIER = (
-    "Ты классифицируешь Telegram-каналы. Ответь одним словом: CRYPTO — если канал в основном о "
-    "криптовалютах, трейдинге крипты, ончейне, аирдропах, мемкоинах, DeFi; OTHER — если нет."
+    "Ты классифицируешь Telegram-каналы и чаты. Ответь одним словом: CRYPTO — если источник в основном о "
+    "криптовалютах, трейдинге, ончейне, аирдропах, мемкоинах, DeFi, арбитраже; OTHER — если нет."
 )
 
 
@@ -58,10 +61,10 @@ def _api(s) -> tuple[int, str]:
     return int(raw_id), api_hash
 
 
-async def _connect(s):
+async def _connect(s, receive_updates: bool = False):
     """Connected and authorized client; logs in interactively if needed."""
     api_id, api_hash = _api(s)
-    client = make_client(api_id, api_hash, s.tg_session)
+    client = make_client(api_id, api_hash, s.tg_session, receive_updates=receive_updates)
     await client.connect()
     if not await client.is_user_authorized():
         print(
@@ -72,6 +75,13 @@ async def _connect(s):
     me = await client.get_me()
     print(f"✅ Аккаунт: {me.first_name} (@{me.username})")
     return client
+
+
+def _sources(s) -> list[Source]:
+    src = load_sources(s.tg_sources_file)
+    if not src:
+        print(f"⚠️ Нет источников в {s.tg_sources_file}")
+    return src
 
 
 async def cmd_login(s) -> None:
@@ -87,8 +97,8 @@ async def _llm_review(s, item: dict) -> str | None:
         backend = make_backend(s)
     except Exception:  # noqa: BLE001
         return None
-    posts = "\n---\n".join(p["text"][:300] for p in item.get("posts", [])[:12])
-    prompt = f"Канал: {item.get('title')}\nОписание: {item.get('about')}\nПосты:\n{posts}"
+    texts = "\n---\n".join(t[:300] for t in item.get("texts", [])[:12])
+    prompt = f"Название: {item['source'].title}\nОписание: {item.get('about')}\nСообщения:\n{texts}"
     try:
         res = await backend.new_session(LLM_CLASSIFIER, [], prompt).step([], allow_tools=False)
     except Exception as e:  # noqa: BLE001
@@ -98,80 +108,105 @@ async def _llm_review(s, item: dict) -> str | None:
     return CRYPTO if word.startswith("CRYPTO") else NOT_CRYPTO if word.startswith("OTHER") else None
 
 
-def _write_report(path: str, items: list[dict], kept: list[str]) -> None:
+def apply_verdict(src: Source, label: str) -> None:
+    """Scan result → enabled flag. The list is already hand-picked, so doubtful ones stay on."""
+    src.verdict = label
+    if src.manual:
+        return
+    src.enabled = label in (CRYPTO, REVIEW)
+
+
+KIND_RU = {"channel": "канал", "group": "чат", "forum": "чат с темами"}
+
+
+def write_report(path: str, items: list[dict]) -> None:
     order = {CRYPTO: 0, REVIEW: 1, NOT_CRYPTO: 2, UNAVAILABLE: 3}
-    items = sorted(items, key=lambda x: (order[x["verdict"].label], -(x["verdict"].post_ratio)))
+    items = sorted(items, key=lambda x: (order[x["verdict"].label], -x["verdict"].post_ratio))
+    enabled = sum(1 for i in items if i["source"].enabled)
     lines = [
-        "# Проверка Telegram-каналов",
+        "# Проверка Telegram-источников",
         "",
-        f"Всего: {len(items)} · оставлено: {len(kept)} · "
+        f"Всего: {len(items)} · читается: {enabled} · "
         + " · ".join(f"{LABELS[k]}: {sum(1 for i in items if i['verdict'].label == k)}"
                      for k in (CRYPTO, REVIEW, NOT_CRYPTO, UNAVAILABLE)),
         "",
-        "| Канал | Итог | Посты про крипту | Подписчики | Последний пост | Частые слова | Почему |",
-        "|---|---|---|---|---|---|---|",
+        "| Источник | Тип | Доступ | Итог | Читаем | Сообщения про крипту | Последнее | Частые слова | Почему |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for i in items:
-        v = i["verdict"]
+        s, v = i["source"], i["verdict"]
         lines.append(
-            f"| @{i['username']} {('— ' + i['title']) if i.get('title') else ''} | {verdict_label(v)}"
-            f"{' (LLM)' if i.get('llm') else ''} | {round(v.post_ratio * 100)}% из {v.posts} | "
-            f"{i.get('subscribers') or '—'} | {i.get('last_post') or '—'} | {', '.join(v.top_terms[:4])} | {v.reason} |"
+            f"| {s.label} — {s.title} | {KIND_RU.get(s.kind, s.kind)} | {'публичный' if s.public else 'приватный'} "
+            f"| {verdict_label(v)}{' (LLM)' if i.get('llm') else ''} | {'да' if s.enabled else 'нет'}"
+            f"{' (вручную)' if s.manual else ''} | {round(v.post_ratio * 100)}% из {v.posts} "
+            f"| {i.get('last_post') or '—'} | {', '.join(v.top_terms[:4])} | {v.reason} |"
         )
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 
 
 async def cmd_scan(s, args) -> None:
-    names: list[str] = []
-    if args.input and os.path.exists(args.input):
-        names = parse_channel_list(open(args.input, encoding="utf-8").read())
+    sources = _sources(s)
     client = await _connect(s)
+    print("Загружаю список чатов аккаунта…")
+    dialogs = await load_dialogs(client)
     if args.include_dialogs:
-        seen = {n.lower() for n in names}
-        mine = [n for n in await subscribed_channels(client) if n.lower() not in seen]
-        print(f"Из твоих подписок добавлено каналов: {len(mine)}")
-        names += mine
-    print(f"Проверяю {len(names)} каналов (по {args.posts} последних постов)…")
+        known = {x.id for x in sources}
+        new = [
+            Source(id=cid, title=getattr(e, "title", ""), username=getattr(e, "username", None),
+                   kind=kind_of(e) or "channel", public=bool(getattr(e, "username", None)), enabled=False)
+            for cid, e in dialogs.items() if cid not in known
+        ]
+        print(f"Из твоих чатов добавлено новых источников: {len(new)}")
+        sources += new
+    print(f"Проверяю {len(sources)} источников (по {args.posts} последних сообщений)…")
 
     items = []
-    for i, name in enumerate(names, 1):
+    for i, src in enumerate(sources, 1):
         try:
-            item = await scan_channel(client, name, args.posts)
+            ent = await resolve(client, src, dialogs)
+            item = await scan_source(client, src, ent, args.posts)
         except Exception as e:  # noqa: BLE001
-            item = {"username": name, "verdict": Verdict(UNAVAILABLE, 0, 0, 0, reason=f"ошибка: {e}")}
+            item = {"source": src, "verdict": Verdict(UNAVAILABLE, 0, 0, 0, reason=f"ошибка: {e}")}
         v = item["verdict"]
         if v.label == CRYPTO and args.inactive_days and (item.get("days_since_last_post") or 0) > args.inactive_days:
-            v.label, v.reason = REVIEW, f"не постит {item['days_since_last_post']} дн."
-        if v.label == REVIEW and args.llm and item.get("posts"):
+            v.label, v.reason = REVIEW, f"молчит {item['days_since_last_post']} дн."
+        if v.label == REVIEW and args.llm and item.get("texts"):
             llm = await _llm_review(s, item)
             if llm:
                 v.label, item["llm"] = llm, True
+        apply_verdict(src, v.label)
         items.append(item)
-        print(f"[{i}/{len(names)}] @{item['username']}: {verdict_label(v)} — {v.reason}")
+        print(f"[{i}/{len(sources)}] {src.label}: {verdict_label(v)} — {v.reason}")
         await asyncio.sleep(1.0)
     await client.disconnect()
 
-    keep_labels = {CRYPTO} | ({REVIEW} if args.keep_review else set())
-    kept = [i["username"] for i in items if i["verdict"].label in keep_labels]
-    os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
-    with open(args.output, "w", encoding="utf-8") as f:
-        f.write("# Крипто-каналы (сгенерировано: python -m swarm.tg scan)\n")
-        f.write("\n".join(kept) + "\n")
-    _write_report(args.report, items, kept)
-    print(f"\n✅ Оставлено {len(kept)} из {len(items)}. Список: {args.output} · отчёт: {args.report}")
-    review = [i["username"] for i in items if i["verdict"].label == REVIEW]
-    if review and not args.keep_review:
-        print(f"❓ Пограничные (не взяты, проверь вручную в отчёте): {', '.join('@' + r for r in review)}")
+    save_sources(s.tg_sources_file, sources)
+    write_report(args.report, items)
+    on = sum(1 for x in sources if x.enabled)
+    print(f"\n✅ Будет читаться {on} из {len(sources)}. Список: {s.tg_sources_file} · отчёт: {args.report}")
 
 
-async def cmd_collect(s) -> None:
-    names = parse_channel_list(open(s.tg_channels_file, encoding="utf-8").read())
-    client = await _connect(s)
-    col = Collector(client, TgStore(s.db_path), names, s.tg_poll_minutes)
-    n = await col.run_once()
-    print(f"✅ Собрано {n} постов из {len(names)} каналов в {s.db_path}")
-    await client.disconnect()
+async def cmd_collect(s, args) -> None:
+    sources = _sources(s)
+    client = await _connect(s, receive_updates=not args.once)
+    store = TgStore(s.db_path)
+    col = Collector(client, store, sources, resync_minutes=s.tg_resync_minutes)
+    await col.start()
+    if args.once:
+        n = await col.sync_all()
+        print(f"✅ Догружено {n} сообщений · всего в базе: {store.stats()}")
+        await col.stop()
+        return
+    print("Слушаю источники. Новые сообщения сохраняются сразу. Остановить — Ctrl+C или закрыть окно.")
+    await client.run_until_disconnected()
+
+
+def cmd_search(s, args) -> None:
+    store = TgStore(s.db_path)
+    res = store.search(args.query or "", args.hours, limit=args.limit, hide_private=False)
+    print(json.dumps(res, ensure_ascii=False, indent=1))
 
 
 def main() -> None:
@@ -179,15 +214,17 @@ def main() -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("login")
     sc = sub.add_parser("scan")
-    sc.add_argument("--input", default="channels/all.txt", help="список каналов")
-    sc.add_argument("--output", default="channels/crypto.txt", help="куда записать крипто-каналы")
     sc.add_argument("--report", default="channels/report.md")
-    sc.add_argument("--posts", type=int, default=50, help="сколько последних постов смотреть")
-    sc.add_argument("--include-dialogs", action="store_true", help="добавить каналы, на которые подписан аккаунт")
-    sc.add_argument("--llm", action="store_true", help="пограничные каналы доразобрать моделью из .env")
-    sc.add_argument("--keep-review", action="store_true", help="оставить и пограничные")
-    sc.add_argument("--inactive-days", type=int, default=90, help="не постит дольше — в пограничные (0 = выкл)")
-    sub.add_parser("collect")
+    sc.add_argument("--posts", type=int, default=50, help="сколько последних сообщений смотреть")
+    sc.add_argument("--include-dialogs", action="store_true", help="добавить все каналы и чаты аккаунта")
+    sc.add_argument("--llm", action="store_true", help="пограничные доразобрать моделью из .env")
+    sc.add_argument("--inactive-days", type=int, default=90, help="молчит дольше — в пограничные (0 = выкл)")
+    co = sub.add_parser("collect")
+    co.add_argument("--once", action="store_true", help="только догрузить пропущенное и выйти")
+    se = sub.add_parser("search")
+    se.add_argument("query", nargs="?", default="")
+    se.add_argument("--hours", type=int, default=24)
+    se.add_argument("--limit", type=int, default=15)
     args = p.parse_args()
 
     s = load_settings()
@@ -197,8 +234,13 @@ def main() -> None:
         asyncio.run(cmd_login(s))
     elif args.cmd == "scan":
         asyncio.run(cmd_scan(s, args))
+    elif args.cmd == "collect":
+        try:
+            asyncio.run(cmd_collect(s, args))
+        except KeyboardInterrupt:
+            print("Остановлено.")
     else:
-        asyncio.run(cmd_collect(s))
+        cmd_search(s, args)
 
 
 if __name__ == "__main__":

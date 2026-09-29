@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import sys
 
 from .agent import Agent
@@ -22,22 +21,22 @@ async def start_telegram_collector(s: Settings):
     """Start the channel collector if Telegram is configured. Returns (store, collector) or (None, None)."""
     if not (s.tg_api_id and s.tg_api_hash):
         return None, None
-    if not os.path.exists(s.tg_channels_file):
-        log.warning("Telegram: нет %s — сначала `python -m swarm.tg scan`", s.tg_channels_file)
-        return None, None
-    from .tg.classify import parse_channel_list
     from .tg.client import Collector, make_client
+    from .tg.sources import load_sources
     from .tg.store import TgStore
 
-    channels = parse_channel_list(open(s.tg_channels_file, encoding="utf-8").read())
+    sources = load_sources(s.tg_sources_file)
+    if not sources:
+        log.warning("Telegram: нет источников в %s", s.tg_sources_file)
+        return None, None
     store = TgStore(s.db_path)
-    collector = Collector(make_client(s.tg_api_id, s.tg_api_hash, s.tg_session), store, channels, s.tg_poll_minutes)
+    client = make_client(s.tg_api_id, s.tg_api_hash, s.tg_session, receive_updates=True)
+    collector = Collector(client, store, sources, resync_minutes=s.tg_resync_minutes)
     try:
         await collector.start()
     except Exception as e:  # noqa: BLE001
         log.warning("Telegram-сборщик не запущен: %s", e)
         return None, None
-    log.info("Telegram: слежу за %d каналами (опрос раз в %d мин)", len(channels), s.tg_poll_minutes)
     return store, collector
 
 

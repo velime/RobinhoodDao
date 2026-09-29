@@ -69,20 +69,3 @@ def classify(title: str, about: str, posts: list[str]) -> Verdict:
 
 def extract_cashtags(text: str) -> list[str]:
     return [m.upper() for m in _CASHTAG_RE.findall(text)]
-
-
-def parse_channel_list(text: str) -> list[str]:
-    """Links / @names / names → unique usernames (case-insensitive, order kept)."""
-    seen, out = set(), []
-    for line in text.splitlines():
-        line = line.split("#", 1)[0].strip()
-        if not line:
-            continue
-        m = re.search(r"(?:t\.me/|telegram\.me/|@)?([A-Za-z0-9_]{4,32})/?$", line)
-        if not m or "+" in line or "joinchat" in line:
-            continue
-        name = m.group(1)
-        if name.lower() not in seen:
-            seen.add(name.lower())
-            out.append(name)
-    return out

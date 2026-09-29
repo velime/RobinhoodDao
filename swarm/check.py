@@ -34,10 +34,10 @@ def static_checks(s: Settings) -> list[tuple[str, str, str]]:
             out.append((FAIL, "TG_API_ID / TG_API_HASH", "заполнены не оба — возьми на https://my.telegram.org"))
         elif not os.path.exists(s.tg_session + ".session"):
             out.append((WARN, "Telegram-сессия", "нет входа — запусти tg_login.bat"))
-        elif not os.path.exists(s.tg_channels_file):
-            out.append((WARN, "Список каналов", f"нет {s.tg_channels_file} — запусти tg_scan.bat"))
+        elif not os.path.exists(s.tg_sources_file):
+            out.append((WARN, "Источники Telegram", f"нет {s.tg_sources_file}"))
         else:
-            out.append((OK, "Telegram-каналы", "сессия и список каналов на месте"))
+            out.append((OK, "Telegram-источники", "сессия и реестр источников на месте"))
     else:
         out.append((WARN, "Telegram-каналы", "не настроены (TG_API_ID/TG_API_HASH) — бот работает без них"))
     return out

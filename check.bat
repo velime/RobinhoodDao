@@ -2,11 +2,25 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 set PYTHONUTF8=1
-if not exist ".venv" (
-  echo Сначала запусти install.bat
+where python >nul 2>nul
+if errorlevel 1 (
+  echo [X] Python не найден. Установи с https://www.python.org/downloads/ и поставь галочку "Add python.exe to PATH".
   pause
   exit /b 1
 )
+if not exist ".venv" python -m venv .venv
 call ".venv\Scripts\activate.bat"
+python -c "import httpx, aiogram, ccxt, openai, anthropic, telethon, dotenv" >nul 2>nul
+if errorlevel 1 (
+  echo Доустанавливаю библиотеки, это займёт пару минут...
+  python -m pip install -q --upgrade pip
+  python -m pip install -q -e .
+  if errorlevel 1 (
+    echo [X] Не удалось установить библиотеки. Пришли текст ошибки выше.
+    pause
+    exit /b 1
+  )
+)
+if not exist ".env" copy ".env.example" ".env" >nul
 python -m swarm.check
 pause

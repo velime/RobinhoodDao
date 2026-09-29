@@ -2,6 +2,8 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 set PYTHONUTF8=1
+echo === Сбор сообщений из Telegram-источников (без бота) ===
+echo.
 where python >nul 2>nul
 if errorlevel 1 (
   echo [X] Python не найден. Установи с https://www.python.org/downloads/ и поставь галочку "Add python.exe to PATH".
@@ -21,7 +23,5 @@ if errorlevel 1 (
     exit /b 1
   )
 )
-echo Вход в твой Telegram-аккаунт (нужен один раз).
-echo.
-python -m swarm.tg login
+python -m swarm.tg collect %*
 pause

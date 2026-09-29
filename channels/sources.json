@@ -1,0 +1,1945 @@
+{
+ "_help": "Источники Telegram. Все читаются через твой аккаунт (он в них состоит). enabled — читать или нет; manual: true — scan не будет менять enabled; verdict заполняет python -m swarm.tg scan.",
+ "sources": [
+  {
+   "id": -1002472080907,
+   "username": "tradebyryndyk",
+   "title": "byryndyk scalp",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002311140057,
+   "username": "ghosteer_flip",
+   "title": "Gho$teer 👻",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002426789639,
+   "username": "mangoo822",
+   "title": "манго дегенит",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002093551074,
+   "username": "rugs29",
+   "title": "29plug",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002700100600,
+   "username": "Seraphim6figs",
+   "title": "Seraphim notes",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001892615802,
+   "username": "cryptoflower28",
+   "title": "Crypto flOwer✨",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002103797645,
+   "username": "Stepzyr_Crypto",
+   "title": "Stepzyr Crypto",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001739832229,
+   "username": "traverserr",
+   "title": "Traverser за*бался воркать",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002538041713,
+   "username": "fomotality",
+   "title": "FOMOTALITY",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002580426154,
+   "username": "lim756mur",
+   "title": "Lim⁷⁵⁶",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002538393539,
+   "username": "CryptoAlexK",
+   "title": "Дневник Алекса",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001576197242,
+   "username": "leprosfx",
+   "title": "lepros",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003534598891,
+   "username": "shotyincrypto",
+   "title": "shoty full work",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002678262776,
+   "username": "barubulka",
+   "title": "Барабулька",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003283725909,
+   "username": "jdmddao",
+   "title": "jdm dao (bullish arc 🧑‍🍳)",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002393775298,
+   "username": "Merc4ryEbluet",
+   "title": "Меркури еблует",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002036290668,
+   "username": "zcscalp",
+   "title": "ZC scalping",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002144259035,
+   "username": "marcelflipaet",
+   "title": "Marcel флипает",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003394462953,
+   "username": "crypto_fl1p",
+   "title": "CryptoFlip",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002759379247,
+   "username": "CryptoTevvv",
+   "title": "CryptoTevvv",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003340043574,
+   "username": "ArturLudit",
+   "title": "Крипта,лудка,2 слота",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002368791065,
+   "username": "ludos404",
+   "title": "404",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002391745187,
+   "username": "taxa2014",
+   "title": "1",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002583889903,
+   "username": "matrixludit",
+   "title": "MATRIX лудит",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002058664065,
+   "username": "shikoscrypt",
+   "title": "Шикос борьба с деньгами",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002385192910,
+   "username": "hoterrekt",
+   "title": "NDA хотер",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001975697725,
+   "username": "skrypto37",
+   "title": "SKRypto",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001892938374,
+   "username": "cryptozoro04",
+   "title": "CryptoZoRo lock in",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002200566337,
+   "username": "hotered",
+   "title": "хотер познает крипту",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002281556647,
+   "username": "rezon77",
+   "title": "Каморка Резона",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001696249466,
+   "username": "easyprofit_crypto",
+   "title": "Easy Profit 💵 Крипта",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002386329152,
+   "username": "zamokludit",
+   "title": "Замок долудился",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001523645021,
+   "username": "afflerdao",
+   "title": "Aff dao",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001747988370,
+   "username": "romanakihunting",
+   "title": "Romanaki хантить Гем",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002018310895,
+   "username": "vorkbychki",
+   "title": "Куколдим медвежку",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001834378176,
+   "username": "sanchez_works",
+   "title": "Sanchez",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001714950917,
+   "username": "cryptoniteua",
+   "title": "Cross & Denys | shitpost",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002249010665,
+   "username": "klimectraxaet",
+   "title": "KLIMEC TRAXAET",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001661568629,
+   "username": "crptmaaniaa",
+   "title": "Cryptomania💥",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002007298117,
+   "username": "twix1444",
+   "title": "Женя Женечка Евгений",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002082197022,
+   "username": "BorikkCrypto",
+   "title": "BorikCrypto",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001872089387,
+   "username": "rozenroom",
+   "title": "рума розена",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001423540718,
+   "username": "don_invest",
+   "title": "Don | Invest Blog",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002624240054,
+   "username": "Montanas_Club",
+   "title": "Montana's Club",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001876695374,
+   "username": "banderocrypt",
+   "title": "Бандерівський криптан",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002096508188,
+   "username": null,
+   "title": "Бомж с печеньям",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": "у канала в списке был юзернейм, но сейчас его нет"
+  },
+  {
+   "id": -1003026242707,
+   "username": "awtrader",
+   "title": "AW Trade",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003663942537,
+   "username": "rybalka_dao_lovit_profit",
+   "title": "рыбалка дао",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003870183117,
+   "username": "kazukiprime",
+   "title": "kazuki ищет прайм (без сна)",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002507005877,
+   "username": "crocutaxx",
+   "title": "Croc",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002493621636,
+   "username": "p9gom",
+   "title": "| 𝕍𝕒𝕟𝕚𝕥𝕪ℂ𝕣𝕪𝕡𝕥𝕠 | путь к криптобогатству",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003207258421,
+   "username": "daniilludit",
+   "title": "Даниил не лудит (День #1)",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002490902430,
+   "username": null,
+   "title": "D",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": "у канала в списке был юзернейм, но сейчас его нет"
+  },
+  {
+   "id": -1002657902088,
+   "username": "d_shitpost",
+   "title": "Жизнь D",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002349664257,
+   "username": "freecallsbabki",
+   "title": "Kodak принтит",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003204136039,
+   "username": "shitpostKodak",
+   "title": "SHIT+LIFESTYLE KODAK",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001997601754,
+   "username": "artypost",
+   "title": "арти флипает",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003459348044,
+   "username": "artyshitpost",
+   "title": "арти щитпост",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001620708930,
+   "username": "bermizdelaet",
+   "title": "Bermiz делает",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002352068698,
+   "username": "lyaminm",
+   "title": "Lyamin",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002312913275,
+   "username": "y0nglin",
+   "title": "Monkey Trade",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002353949265,
+   "username": "MiracleZer0",
+   "title": "Miracle | AI & Crypto",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002424579885,
+   "username": "hunter_spamit",
+   "title": "Хижина Охотника 🐺",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001602139555,
+   "username": "cryptocat_off",
+   "title": "CryptoCat Official",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001538929993,
+   "username": "rugikk",
+   "title": "Канал Рудика",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002639314627,
+   "username": "shflipper",
+   "title": "sh flipper",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002281425487,
+   "username": "vladick_tarantino",
+   "title": "tarantino no gamble",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003233521963,
+   "username": "honestcryp",
+   "title": "хоне$т",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001828456086,
+   "username": "RektBoysClubs",
+   "title": "REKT BOYS CLUB",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002568183136,
+   "username": "BurgerMoneyMaker",
+   "title": "Burger Флипает",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001549046191,
+   "username": "on_chain_radar",
+   "title": "Onchain Radar",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001892758236,
+   "username": "bullkaonchainit",
+   "title": "Bullka ончейнит 🦆",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003449499117,
+   "username": "zachemrabotatb",
+   "title": "zachem rabotat’?",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001981807495,
+   "username": "temkabosssa",
+   "title": "Темки от BOSS’а ⚫️ 🟠",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002431281471,
+   "username": "diary_toyoshik",
+   "title": "дневник тойошика 📖",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002493578234,
+   "username": "stuzzy_kolit",
+   "title": "stuzzy колит #лоудепмаксинг",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002223718208,
+   "username": "fxmcalls",
+   "title": "fxm / villain arc / obnylenie arc",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001437575442,
+   "username": "cryptoarrws",
+   "title": "Crypto Arrow",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002547694867,
+   "username": "kdludit",
+   "title": "kd балуется",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002164492321,
+   "username": "cryptookd",
+   "title": "CryptoKD",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002023087922,
+   "username": "s1000nacrypte",
+   "title": "$100k на крипте",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001641224911,
+   "username": "KingofTilt",
+   "title": "PussyScalper",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001599274384,
+   "username": "phtcrypto",
+   "title": "Crypto Phantom 👻",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002499032651,
+   "username": "crypto_spaceua",
+   "title": "CryptoSpace",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001874513253,
+   "username": "marcelcrypt0",
+   "title": "Marcel Crypto",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001540957565,
+   "username": "coindrop5",
+   "title": "Coin Drop 💰",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001933296227,
+   "username": "ua_cryptoinvest",
+   "title": "CryptoInvest 💰",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002203005702,
+   "username": "sin_cap_algo",
+   "title": "SINCAP",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002649730858,
+   "username": "OVRTKK",
+   "title": "OVERTAKE",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003521653115,
+   "username": "Mironvinosit",
+   "title": "Miron vinosit 6figs",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002117517329,
+   "username": "venom_crypton",
+   "title": "ВЕНОМ 🐂",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002263463214,
+   "username": "CpeculantIC",
+   "title": "СпекулянтIC☘️",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002528622108,
+   "username": "TheVectorChannel",
+   "title": "𝗩 𝗘 𝗖 𝗧 𝗢 𝗥",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003753658656,
+   "username": "RTMscalp",
+   "title": "lobzik скальпит",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001650582791,
+   "username": "vityanacrypte",
+   "title": "ВИТЯ НА КРИПТЕ 🙌",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001619736474,
+   "username": "ramar9",
+   "title": "ramar",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002236365769,
+   "username": "ondreigoichev",
+   "title": "Ондрей Гойчев (DFW Bals)",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001344887341,
+   "username": "whalesincryptocom",
+   "title": "🐋 Whales in crypto",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002577459585,
+   "username": "cryptoPatrik28",
+   "title": "Канал патріка",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1004352013277,
+   "username": "wyztrade",
+   "title": "Wyzet trade",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003431746340,
+   "username": "grasss_flip",
+   "title": "grasss",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001782788774,
+   "username": "gualafarmers",
+   "title": "Flover",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003258876208,
+   "username": "futuressmart",
+   "title": "«Я смартик» ДАО",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001728797429,
+   "username": "Jacobs_pro",
+   "title": "Jacob Pro",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001203560567,
+   "username": "markettwits",
+   "title": "MarketTwits",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001551358677,
+   "username": "mobydick_crypto",
+   "title": "Mobydick | Whale Trades, Liquidations & Crypto Futures Signals",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003798267174,
+   "username": "HL_TWAP",
+   "title": "TWAP Hyperliquid",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003555334039,
+   "username": "hyperdashflows",
+   "title": "Hyperdash Flows",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1004442699799,
+   "username": "spread_last_index",
+   "title": "spread last index 5%",
+   "kind": "forum",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003453888028,
+   "username": "hunter_ovrtk",
+   "title": "HUNTER",
+   "kind": "forum",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002568394616,
+   "username": "mexc_size_changes",
+   "title": "mexc size changes",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001976111514,
+   "username": "WalterBloomberg",
+   "title": "Walter Bloomberg",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001869117977,
+   "username": "kriptodima1",
+   "title": "КОТОВ | #1 ПО ШОРТАМ/ЛОНГАМ",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001269133096,
+   "username": "cryptoarsenal",
+   "title": "Data | CryptoAttack 🤖",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001884148070,
+   "username": "odyssey_pishet",
+   "title": "Щитпост консилиум",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003935441836,
+   "username": "ourbitfairprice",
+   "title": "Ourbit FAIR PRICE 3%+",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002268286255,
+   "username": "kormushka_mexc",
+   "title": "Mexc Price | Kormushka",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003844809732,
+   "username": "OI_bot_NDA",
+   "title": "OI by NDA",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003557252483,
+   "username": "NDA_futures_arbitrage",
+   "title": "Futures Arbitrage NDA",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002790362705,
+   "username": "gate_korm",
+   "title": "Gate | Feed",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002628139964,
+   "username": "pool_alerts",
+   "title": "High APR Pools Alerts",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003846332466,
+   "username": "fair_3p",
+   "title": "spread 3% MEXC",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002606308371,
+   "username": "mrcaptainspread",
+   "title": "Капитан спреда",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003065396156,
+   "username": "NDACRYPTO1",
+   "title": "NDA CRYPTO",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002521935297,
+   "username": "knopka_bablow",
+   "title": "Кнопка Бабло",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002043434663,
+   "username": "NewListingsFeed",
+   "title": "New Listings Feed",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001848589360,
+   "username": "marketsous",
+   "title": "Рыночный Соус",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003344803040,
+   "username": "fair_9p",
+   "title": "MEXC 9% fair",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002350284294,
+   "username": "futures_spreads7",
+   "title": "Futures Spreads 7%",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001961189146,
+   "username": "proboyscalp",
+   "title": "ProBoy",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002567574542,
+   "username": "listing_alarm",
+   "title": "Futures Listing Alarm",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002267968419,
+   "username": "BWEnews_RU",
+   "title": "BWEnews Русский 🇷🇺",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1004463676723,
+   "username": "splash_100",
+   "title": "Splash 100%",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001502820202,
+   "username": "enjoy_crypto_guild",
+   "title": "CryptoEnjoy 🍀",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001994462729,
+   "username": "TimALfach",
+   "title": "Tim alpha moves",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002614938965,
+   "username": "dt_50p",
+   "title": "splash 50% MEXC",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002366953708,
+   "username": "mrludini",
+   "title": "мур лудик",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002156258222,
+   "username": "safru_dodep",
+   "title": "Сын додепа",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003048957894,
+   "username": "Delta_trd",
+   "title": "Delta",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002811695025,
+   "username": "mexcstockscal",
+   "title": "Mexc stocks calendar",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002037763953,
+   "username": "crypto_kai",
+   "title": "Kai Crypto",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003179791604,
+   "username": "web3memoriess",
+   "title": "Воспоминания WEB3 спекулянта",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002215114036,
+   "username": "yariketh",
+   "title": "ярик.eth",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002419803543,
+   "username": "severreborn",
+   "title": "sever reborn",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002353445509,
+   "username": "metaboshki",
+   "title": "Metaboss | Мемкоины",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003483356803,
+   "username": "dalshe_menshe_crypto",
+   "title": "Дальше меньше",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002168279916,
+   "username": "borntogambleall",
+   "title": "Родился Лудоманом",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002325047930,
+   "username": "DelistingsFeed",
+   "title": "Delistings Feed",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003246741458,
+   "username": "Pathto101k",
+   "title": "Push to 101K",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002170828508,
+   "username": "axicalls",
+   "title": "axicalls",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003628848245,
+   "username": "oi_splash",
+   "title": "OI Splash",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002173677431,
+   "username": "crypto_oborona",
+   "title": "Crypto Oborona",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1004343296688,
+   "username": "daniilluditrasflip",
+   "title": "Расфлип с 5$ | Щитпост",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003918665562,
+   "username": "esportsdeps",
+   "title": "Gua мекс депы",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001364081847,
+   "username": "durov_russia",
+   "title": "Павел Дуров",
+   "kind": "channel",
+   "public": true,
+   "enabled": false,
+   "verdict": null,
+   "note": "похоже не крипта — выключен; включи вручную (enabled: true), если нужен"
+  },
+  {
+   "id": -1003147452065,
+   "username": "mexc_stocks",
+   "title": "MEXC STOCKS ALERT 🚨",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002390066325,
+   "username": "dca_alert_nofilter",
+   "title": "DCA Alert [NO FILTER]",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003749132863,
+   "username": "stocks_calendar",
+   "title": "stock mexc calendar",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003555895612,
+   "username": "MEXCikanets",
+   "title": "Спидран по ректу",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003268871790,
+   "username": "gate_8p",
+   "title": "Gate 8% fair",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003903691202,
+   "username": "LifeNDA1918",
+   "title": "Житуха NDA",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002078194580,
+   "username": "AbuzikLudit",
+   "title": "Абузик лудит",
+   "kind": "channel",
+   "public": true,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1004394803742,
+   "username": null,
+   "title": "binance_bybit_antispread",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1004432955374,
+   "username": null,
+   "title": "bybit_last_fair",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002797401414,
+   "username": null,
+   "title": "PARSER (название не придумали))",
+   "kind": "forum",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002009649699,
+   "username": null,
+   "title": "Binance Liquidations",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003404472272,
+   "username": null,
+   "title": "FACKBLOCK",
+   "kind": "forum",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003019541779,
+   "username": null,
+   "title": "Dumper",
+   "kind": "forum",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003712673420,
+   "username": null,
+   "title": "AMNYAM HUB",
+   "kind": "forum",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003983175573,
+   "username": null,
+   "title": "arty private chat",
+   "kind": "group",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002788368101,
+   "username": null,
+   "title": "Finder",
+   "kind": "forum",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002522988313,
+   "username": null,
+   "title": "Mexc Dex Spread Tracker Alerts",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003752250299,
+   "username": null,
+   "title": "Pelican by Shelby",
+   "kind": "forum",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002196771546,
+   "username": null,
+   "title": "Whale Detector",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001579090675,
+   "username": null,
+   "title": "⚡️КРИПТО ИЛЬЯ 🍋",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001978443540,
+   "username": null,
+   "title": "The Indicator",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003124536487,
+   "username": null,
+   "title": "Криптоговно 💩",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003204388574,
+   "username": null,
+   "title": "Крипто Бункер Ончейн",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1004465712128,
+   "username": null,
+   "title": "ебем робинхуд",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003760528426,
+   "username": null,
+   "title": "HyperLiquid TWAPs",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002111950903,
+   "username": null,
+   "title": "Rookiedays",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002608827429,
+   "username": null,
+   "title": "arty private-High Risk🎰",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002940414571,
+   "username": null,
+   "title": "rawen news",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1004160163531,
+   "username": null,
+   "title": "binance_aster_1%",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003471068731,
+   "username": null,
+   "title": "ProMintClub",
+   "kind": "forum",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002636989181,
+   "username": null,
+   "title": "DolboebTrade",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003970633849,
+   "username": null,
+   "title": "Onchain LAB",
+   "kind": "forum",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1001006503122,
+   "username": null,
+   "title": "Pavel Durov",
+   "kind": "channel",
+   "public": false,
+   "enabled": false,
+   "verdict": null,
+   "note": "похоже не крипта — выключен; включи вручную (enabled: true), если нужен"
+  },
+  {
+   "id": -1003019174187,
+   "username": null,
+   "title": "Канал🐸",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003926273350,
+   "username": null,
+   "title": "ares0001x",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003039187934,
+   "username": null,
+   "title": "ramar chat",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002931152265,
+   "username": null,
+   "title": "ramar shitpost",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1002877237829,
+   "username": null,
+   "title": "ARTY | POSITIONS (GATE/BINGX/MEXC)",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  },
+  {
+   "id": -1003429832471,
+   "username": null,
+   "title": "Штрудель Тошка текст #текст",
+   "kind": "channel",
+   "public": false,
+   "enabled": true,
+   "verdict": null,
+   "note": null
+  }
+ ]
+}

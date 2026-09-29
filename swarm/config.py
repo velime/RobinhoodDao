@@ -73,8 +73,9 @@ class Settings:
     tg_api_id: int = 0
     tg_api_hash: str = ""
     tg_session: str = "data/telegram"
-    tg_channels_file: str = "channels/crypto.txt"
-    tg_poll_minutes: int = 10
+    tg_sources_file: str = "channels/sources.json"
+    tg_resync_minutes: int = 60
+    tg_show_private: bool = False
     timezone: str = "Europe/Kyiv"
     db_path: str = "swarm.db"
     log_level: str = "INFO"
@@ -117,8 +118,9 @@ def load_settings() -> Settings:
         tg_api_id=_int("TG_API_ID", 0),
         tg_api_hash=os.getenv("TG_API_HASH", ""),
         tg_session=os.getenv("TG_SESSION", "data/telegram"),
-        tg_channels_file=os.getenv("TG_CHANNELS_FILE", "channels/crypto.txt"),
-        tg_poll_minutes=_int("TG_POLL_MINUTES", 10),
+        tg_sources_file=os.getenv("TG_SOURCES_FILE", "channels/sources.json"),
+        tg_resync_minutes=_int("TG_RESYNC_MINUTES", 60),
+        tg_show_private=os.getenv("TG_SHOW_PRIVATE", "").lower() in ("1", "true", "yes"),
         timezone=os.getenv("TIMEZONE", "Europe/Kyiv"),
         db_path=os.getenv("DB_PATH", "swarm.db"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
