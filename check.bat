@@ -10,7 +10,7 @@ if errorlevel 1 (
 )
 if not exist ".venv" python -m venv .venv
 call ".venv\Scripts\activate.bat"
-python -c "import httpx, aiogram, ccxt, openai, anthropic, telethon, dotenv" >nul 2>nul
+python -c "import httpx, aiogram, ccxt, openai, anthropic, telethon, dotenv, ddgs" >nul 2>nul
 if errorlevel 1 (
   echo Доустанавливаю библиотеки, это займёт пару минут...
   python -m pip install -q --upgrade pip

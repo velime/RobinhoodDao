@@ -69,6 +69,9 @@ class Settings:
     exchanges: tuple[str, ...] = ()
     coingecko_api_key: str = ""
     tavily_api_key: str = ""
+    brave_api_key: str = ""
+    jina_api_key: str = ""
+    web_reader: bool = True  # read pages through Jina Reader first
     cryptopanic_api_key: str = ""
     twitterapi_io_key: str = ""
     x_accounts: tuple[str, ...] = ()
@@ -119,6 +122,9 @@ def load_settings() -> Settings:
         ),
         coingecko_api_key=os.getenv("COINGECKO_API_KEY", ""),
         tavily_api_key=os.getenv("TAVILY_API_KEY", ""),
+        brave_api_key=os.getenv("BRAVE_API_KEY", ""),
+        jina_api_key=os.getenv("JINA_API_KEY", ""),
+        web_reader=os.getenv("WEB_READER", "jina").lower() != "direct",
         cryptopanic_api_key=os.getenv("CRYPTOPANIC_API_KEY", ""),
         twitterapi_io_key=os.getenv("TWITTERAPI_IO_KEY", ""),
         x_accounts=tuple(a.lstrip("@") for a in _list("X_ACCOUNTS", DEFAULT_X_ACCOUNTS)),

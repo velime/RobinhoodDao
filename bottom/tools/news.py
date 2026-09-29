@@ -1,4 +1,4 @@
-"""News and social: crypto media RSS, CryptoPanic, X (via twitterapi.io), web search.
+"""News and social: crypto media RSS, CryptoPanic, X (via twitterapi.io).
 
 X is used ONLY for crypto news and opinions of influencers — never as a
 source of market numbers (price, OI, funding come from exchanges).
@@ -189,31 +189,3 @@ async def x_influencers(api_key: str, accounts: tuple[str, ...], topic: str = ""
         "source": "X via twitterapi.io",
         "rule": "это мнения и новости, не данные — цифры рынка бери с бирж",
     }
-
-
-async def web_search(api_key: str, query: str) -> dict:
-    if not api_key:
-        return {"error": "веб-поиск не подключён (нет TAVILY_API_KEY)"}
-    data = await http.post_json(
-        "https://api.tavily.com/search",
-        {"query": query, "max_results": 6, "search_depth": "basic", "include_answer": False},
-        {"Authorization": f"Bearer {api_key}"},
-    )
-    return {
-        "query": query,
-        "results": [
-            {"title": r.get("title"), "url": r.get("url"), "content": (r.get("content") or "")[:700]}
-            for r in data.get("results", [])
-        ],
-        "source": "Tavily",
-    }
-
-
-async def fetch_page(url: str) -> dict:
-    r = await http.client().get(url)
-    r.raise_for_status()
-    text = r.text
-    text = re.sub(r"(?is)<(script|style|nav|footer|header)[^>]*>.*?</\1>", " ", text)
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"\s+", " ", html.unescape(text)).strip()
-    return {"url": url, "text": text[:6000], "truncated": len(text) > 6000}

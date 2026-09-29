@@ -14,6 +14,7 @@ from . import derivatives as deriv
 from . import exchanges as exch
 from . import fundamentals as fund
 from . import news
+from . import websearch
 from .indicators import summarize_candles
 from .setup_calc import calc_setup
 
@@ -271,12 +272,13 @@ class Toolbox:
             return await cc.cross_check(
                 topic, hours, tg_store=store_for_cc, hide_private=not s.tg_show_private,
                 x_key=s.twitterapi_io_key, cryptopanic_key=s.cryptopanic_api_key, pool=self.pool,
+                web_keys={"tavily_key": s.tavily_api_key, "brave_key": s.brave_api_key},
             )
 
         self._add(
             "cross_check",
             "Сопоставить одну новость/тему/тикер по ВСЕМ источникам сразу: Telegram-каналы и чаты, X, "
-            "крипто-СМИ + цена. Даёт хронологию, кто написал первым, сколько независимых источников, волны "
+            "крипто-СМИ, новости из интернета + цена. Даёт хронологию, кто написал первым, сколько независимых источников, волны "
             "репостов, реакцию цены с первого упоминания и за 6ч до него. Используй для любой новости, слуха, "
             "пампа или «почему растёт/падает».",
             {
@@ -310,18 +312,26 @@ class Toolbox:
                 {"ref": {"type": "string"}}, ["ref"], "🖼 Смотрю картинку",
                 analyze_image,
             )
-        if s.tavily_api_key:
-            self._add(
-                "web_search",
-                "Веб-поиск: статьи, документация, анонсы, контекст события.",
-                {"query": {"type": "string"}}, ["query"], "🌐 Ищу в вебе",
-                lambda query: news.web_search(s.tavily_api_key, query),
-            )
+        self._add(
+            "web_search",
+            "Поиск в интернете: анонсы бирж и проектов, документация, блоги, регуляторы, взломы, разлоки, "
+            "команда, партнёрства — всё, чего нет в рыночных данных. recent_days > 0 — поиск свежих новостей "
+            "за этот период (с датами). Возвращает заголовки, ссылки, выдержки; нужную страницу читай "
+            "fetch_page.",
+            {
+                "query": {"type": "string", "description": "Запрос; для крипто-новостей лучше на английском"},
+                "recent_days": {"type": "integer", "description": "0 — обычный поиск; 1/7/30 — новости за период"},
+                "max_results": {"type": "integer", "description": "Сколько результатов (по умолчанию 8, до 15)"},
+            },
+            ["query"], "🌐 Ищу в интернете",
+            lambda query, recent_days=0, max_results=8: websearch.web_search(
+                query, recent_days, max_results, tavily_key=s.tavily_api_key, brave_key=s.brave_api_key),
+        )
         self._add(
             "fetch_page",
-            "Прочитать текст страницы по URL (из новостей или поиска).",
+            "Прочитать текст страницы по ссылке (из поиска, новостей, твита): статья, анонс, документация.",
             {"url": {"type": "string"}}, ["url"], "📄 Читаю страницу",
-            lambda url: news.fetch_page(url),
+            lambda url: websearch.fetch_page(url, s.jina_api_key, s.web_reader),
         )
         self._add(
             "calc_setup",

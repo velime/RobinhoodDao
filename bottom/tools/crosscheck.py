@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 
 from . import exchanges as exch
-from . import news
+from . import news, websearch
 from .symbols import normalize_base
 
 _TW_FMT = "%a %b %d %H:%M:%S %z %Y"
@@ -27,6 +27,14 @@ def _tweet_ts(created_at: str | None) -> float | None:
         except ValueError:
             continue
     return None
+
+
+def _site(result: dict) -> str:
+    """Publisher name, or the domain of the URL."""
+    if result.get("source"):
+        return result["source"]
+    m = re.match(r"https?://(?:www\.)?([^/]+)", result.get("url") or "")
+    return m.group(1) if m else "web"
 
 
 def _norm(text: str) -> str:
@@ -89,7 +97,7 @@ def price_reaction(candles: list[dict], first_ts: float | None) -> dict | None:
 
 
 async def cross_check(topic: str, hours: int, *, tg_store=None, hide_private: bool = True, x_key: str = "",
-                      cryptopanic_key: str = "", pool=None) -> dict:
+                      cryptopanic_key: str = "", pool=None, web_keys: dict | None = None) -> dict:
     hours = max(1, min(int(hours), 24 * 30))
     now = time.time()
     is_ticker = len(topic.strip()) <= 12 and " " not in topic.strip()
@@ -106,8 +114,13 @@ async def cross_check(topic: str, hours: int, *, tg_store=None, hide_private: bo
         candles, _meta = await exch.ohlcv(pool, topic, "1h", min(hours + 8, 500))
         return candles
 
-    tg_r, news_r, x_r, candles = await asyncio.gather(
-        tg(), news.crypto_news(topic, hours, cryptopanic_key), x(), px(), return_exceptions=True
+    async def web():
+        q = f"{normalize_base(topic)} crypto" if is_ticker else topic
+        return await websearch.web_search(q, recent_days=max(1, (hours + 23) // 24), max_results=10,
+                                          **(web_keys or {}))
+
+    tg_r, news_r, x_r, candles, web_r = await asyncio.gather(
+        tg(), news.crypto_news(topic, hours, cryptopanic_key), x(), px(), web(), return_exceptions=True
     )
     events: list[dict] = []
     errors = {}
@@ -133,6 +146,13 @@ async def cross_check(topic: str, hours: int, *, tg_store=None, hide_private: bo
                 events.append({"ts": ts, "type": "x", "source": f"@{tw.get('author')}", "text": tw.get("text") or ""})
     elif isinstance(x_r, Exception):
         errors["x"] = str(x_r)
+    if isinstance(web_r, dict):
+        for w in web_r.get("results", []):
+            if w.get("age_hours") is not None and w["age_hours"] <= hours:
+                events.append({"ts": now - w["age_hours"] * 3600, "type": "web_news", "source": _site(w),
+                               "text": w["title"] + (f" — {w['snippet'][:150]}" if w.get("snippet") else "")})
+    elif isinstance(web_r, Exception):
+        errors["web"] = str(web_r)
 
     # de-duplicate the same tweet coming from top+latest
     seen, uniq = set(), []
