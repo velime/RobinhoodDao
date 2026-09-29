@@ -23,6 +23,7 @@ from .storage import Storage
 log = logging.getLogger(__name__)
 
 EDIT_INTERVAL = 1.2  # Telegram rate-limits message edits
+QUESTION_TIMEOUT = 300  # wall-clock limit for one answer, seconds
 THINKING = ("💎 Думаю.", "💎 Думаю..", "💎 Думаю...")
 
 
@@ -106,6 +107,7 @@ class BottomBot:
         r.message(Command("lessons"))(self.on_lessons)
         r.message(Command("lesson"))(self.on_lesson)
         r.message(Command("forget"))(self.on_forget)
+        r.message(Command("adopt"))(self.on_adopt)
         r.message(F.text | F.caption | F.photo)(self.on_text)
 
     # --- learning commands ---
@@ -151,9 +153,29 @@ class BottomBot:
     async def on_lessons(self, message: Message) -> None:
         if self.journal is None:
             return
-        lessons = self.journal.active_lessons()
-        text = "\n".join(f"#{i} {t}{' (админ)' if k == 'manual' else ''}" for i, t, k in lessons)
-        await message.answer("🧠 Мои уроки:\n" + text if lessons else "🧠 Уроков пока нет.", parse_mode=None)
+        icon = {"active": "✅", "contested": "⚠️", "candidate": "🕐"}
+        rows = self.journal.all_lessons()
+        if not rows:
+            await message.answer("🧠 Уроков пока нет.", parse_mode=None)
+            return
+        lines = ["🧠 Мои уроки (✅ применяю · ⚠️ спорный · 🕐 кандидат — ждёт подтверждения):"]
+        for x in rows:
+            who = "админ" if x["kind"] == "manual" else f"случаев: {x['cases']}"
+            extra = f" — оспорен: {x['reason']}" if x["status"] == "contested" and x["reason"] else ""
+            lines.append(f"{icon[x['status']]} #{x['id']} {x['text']} ({who}){extra}")
+        lines.append("\nАдмин: /adopt N — утвердить, /forget N — снять.")
+        await message.answer("\n".join(lines), parse_mode=None)
+
+    async def on_adopt(self, message: Message) -> None:
+        if self.journal is None or not self._is_admin(message):
+            return
+        arg = self._arg(message).lstrip("#")
+        if arg.isdigit() and self.journal.adopt(int(arg)):
+            if self.learner:
+                self.learner.invalidate()
+            await message.reply(f"✅ Урок #{arg} утверждён и применяется.", parse_mode=None)
+        else:
+            await message.reply("Укажи номер кандидата или спорного урока: /adopt 5 (список — /lessons)", parse_mode=None)
 
     async def on_lesson(self, message: Message) -> None:
         if self.journal is None or not self._is_admin(message):
@@ -233,9 +255,14 @@ class BottomBot:
         if getattr(message, "photo", None):
             question = await self._with_image(message, question, status)
         try:
-            result = await self.agent.answer(
-                question, self.storage.history(conv), on_status=status.update, step_budget=left
+            result = await asyncio.wait_for(
+                self.agent.answer(question, self.storage.history(conv), on_status=status.update, step_budget=left),
+                QUESTION_TIMEOUT,
             )
+        except asyncio.TimeoutError:
+            await status.msg.edit_text("⏳ Разбор занял слишком долго — источники тормозят. Попробуй ещё раз или "
+                                       "сузь вопрос.", parse_mode=None)
+            return
         except Exception:  # noqa: BLE001
             log.exception("agent failed")
             await status.msg.edit_text("⚠️ Что-то пошло не так при разборе. Попробуй ещё раз чуть позже.", parse_mode=None)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from .setup_calc import calc_setup
 log = logging.getLogger(__name__)
 
 TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"]
+TOOL_TIMEOUT = 60  # seconds per tool call
 
 
 @dataclass
@@ -353,7 +355,9 @@ class Toolbox:
         if tool is None:
             return json.dumps({"error": f"нет инструмента {name}"}, ensure_ascii=False)
         try:
-            result = await tool.run(**(args or {}))
+            result = await asyncio.wait_for(tool.run(**(args or {})), TOOL_TIMEOUT)
+        except asyncio.TimeoutError:
+            result = {"error": f"источник не ответил за {TOOL_TIMEOUT} с"}
         except TypeError as e:
             result = {"error": f"неверные аргументы: {e}"}
         except Exception as e:  # noqa: BLE001

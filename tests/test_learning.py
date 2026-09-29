@@ -1,5 +1,7 @@
 import json
 
+import time
+
 from bottom.agent import Agent
 from bottom.config import Settings
 from bottom.learning import Journal, Learner, evaluate_setup, parse_review, published_setups
@@ -54,8 +56,12 @@ def test_expired_in_trade():
 
 
 def test_parse_review():
-    new, retire = parse_review("+ На мемах стоп ставить за 4ч уровнем, 1ч выбивает шумом\n- #3 не подтвердилось\nмусор")
-    assert new == ["На мемах стоп ставить за 4ч уровнем, 1ч выбивает шумом"] and retire == [(3, "не подтвердилось")]
+    r = parse_review("+ На мемах стоп ставить за 4ч уровнем, 1ч выбивает шумом [S3, f7]\n"
+                     "= #4 [S9]\n! #3 стоп за 4ч тоже выбило [S10]\nмусор\n+ без оснований")
+    assert r["new"] == [("На мемах стоп ставить за 4ч уровнем, 1ч выбивает шумом", ["S3", "F7"]),
+                        ("без оснований", [])]
+    assert r["confirm"] == [(4, ["S9"])]
+    assert r["contest"] == [(3, "стоп за 4ч тоже выбило", ["S10"])]
 
 
 def test_published_setups_only_those_in_answer():
@@ -101,24 +107,64 @@ class ReviewBackend:
         return ReviewSession(self.text)
 
 
-async def test_learner_review_and_prompt_block(tmp_path):
-    j = Journal(str(tmp_path / "l.db"))
-    old = j.add_lesson("Старый урок, который оказался неверным", "auto")
+def _closed_setup(j, sym="PEPE"):
     j.record_message(1, 2, "u", "q", "a")
-    (sid,) = j.record_setups("u", 1, 2, "q", "a", [{"verdict": "OK", "symbol": "PEPE", "direction": "long",
+    (sid,) = j.record_setups("u", 1, 2, "q", "a", [{"verdict": "OK", "symbol": sym, "direction": "long",
                                                     "entry_zone": [1, 1], "stop": 0.9, "targets": [{"target": 1.2}],
                                                     "rr_tp1": 2}])
     j.update_setup(sid, {"status": "closed", "outcome": "stop", "r": -1.0, "mfe_pct": 0.5, "mae_pct": 12})
+    return sid
+
+
+async def test_lesson_is_earned_not_asserted(tmp_path, monkeypatch):
+    j = Journal(str(tmp_path / "l.db"))
+    old = j.add_lesson("Старый урок от админа про стопы", "manual")
+    s1 = _closed_setup(j)
     j.add_feedback(1, 2, 5, "вход был в самый хай")
-    backend = ReviewBackend(f"+ Не давать вход в верхних 10% суточного диапазона без отката\n- #{old} опровергнут")
+    fid = j.db.execute("SELECT MAX(id) FROM feedback").fetchone()[0]
+
+    # day 1: a new lesson citing two cases → only a candidate; a made-up case is ignored; old one contested
+    monkeypatch.setattr(Journal, "_today", staticmethod(lambda: "2026-09-01"))
+    backend = ReviewBackend(f"+ Не давать вход в верхних 10% суточного диапазона [S{s1}, F{fid}]\n"
+                            f"+ Урок на выдуманном основании для проверки [S999]\n"
+                            f"! #{old} стоп за уровнем не спас [S{s1}]")
     learner = Learner(j, backend)
     res = await learner.review()
-    assert res == {"new": 1, "retired": 1}
+    assert res["new"] == 1 and res["contested"] == 1 and res["promoted"] == 0
     assert "PEPE long" in backend.prompts[0] and "вход был в самый хай" in backend.prompts[0]
     block = learner.lessons_block()
-    assert "Не давать вход в верхних 10%" in block and "Старый урок" not in block
-    assert "винрейт" in block
-    assert await learner.review() == {"new": 0, "retired": 0}  # nothing new to review
+    assert "верхних 10%" not in block  # candidates are not injected
+    assert "СПОРНО: стоп за уровнем не спас" in block  # contested stays visible, tagged
+    cand = next(x for x in j.all_lessons() if x["status"] == "candidate")
+    assert cand["cases"] == 2
+
+    # day 2: another case confirms it → promoted to active and injected
+    monkeypatch.setattr(Journal, "_today", staticmethod(lambda: "2026-09-02"))
+    s2 = _closed_setup(j, "WIF")
+    learner.backend = ReviewBackend(f"= #{cand['id']} [S{s2}]")
+    res = await learner.review()
+    assert res["promoted"] == 1
+    assert "верхних 10%" in learner.lessons_block()
+    assert (await learner.review())["new"] == 0  # nothing new to review
+
+
+def test_adopt_and_forgetting(tmp_path):
+    j = Journal(str(tmp_path / "f.db"))
+    cand = j.add_candidate("Кандидат, который никто не подтвердил", ["S1"])
+    auto = j.add_candidate("Авто-урок, давно не подтверждался", ["S2"])
+    j.adopt(auto)
+    manual = j.add_lesson("Урок админа живёт, пока его не снимут", "manual")
+    now = time.time() + 61 * 86400
+    assert j.apply_forgetting(now) == 2
+    statuses = {x["id"]: x["status"] for x in j.all_lessons()}
+    assert cand not in statuses and auto not in statuses and statuses[manual] == "active"
+    assert j.adopt(cand) is False  # expired can't be adopted back silently
+
+
+def test_promotion_rule():
+    assert not Journal.promotable([{"ref": "S1", "day": "d1"}, {"ref": "F1", "day": "d1"}])  # one day
+    assert not Journal.promotable([{"ref": "S1", "day": "d1"}, {"ref": "S1", "day": "d2"}])  # one case
+    assert Journal.promotable([{"ref": "S1", "day": "d1"}, {"ref": "S2", "day": "d2"}])
 
 
 class SetupSession(Session):

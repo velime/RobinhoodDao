@@ -4,10 +4,20 @@
 2. Evaluator: hourly candles decide what happened — not filled / stop / TP1 → BE / TP2 —
    with MFE/MAE and the result in R.
 3. Feedback: users reply /wrong to a bot answer and say what was wrong.
-4. Review: once a day the model reads closed setups and feedback and writes short,
-   checkable lessons (and retires lessons the evidence contradicts).
-5. Use: active lessons and the track record are added to the system prompt, and the
-   track_record tool lets the model check its own history before giving a setup.
+4. Review: once a day the model reads closed setups and feedback and proposes short,
+   checkable lessons, each citing the cases it rests on.
+5. Promotion is earned, not asserted (agent-memory / memory-engineering methodology):
+   - a proposed lesson starts as a *candidate* and is NOT injected into the prompt;
+   - it becomes *active* only when supported by >= 2 distinct cases on >= 2 distinct
+     review days, or when an admin adopts it (/adopt, /lesson);
+   - evidence is checked: a lesson may only cite cases shown in that review;
+   - contradicting evidence never deletes a lesson — it is marked *contested* and
+     still shown with the tag until a human resolves it (/adopt or /forget);
+   - forgetting policy: candidates expire after 30 days, active auto lessons expire
+     after 60 days without re-confirmation, at most 30 active lessons (oldest-confirmed
+     auto lessons evicted first; admin lessons are never evicted).
+6. Use: active and contested lessons plus the track record go into the system prompt,
+   and the track_record tool lets the model check its own history before a setup.
 """
 
 from __future__ import annotations
@@ -23,6 +33,10 @@ log = logging.getLogger(__name__)
 FILL_WINDOW_H = 72  # a limit entry not reached in 3 days → not filled
 MAX_OPEN_H = 7 * 24  # a filled trade still open after 7 days → closed at market
 MAX_ACTIVE_LESSONS = 30
+PROMOTE_MIN_CASES = 2
+PROMOTE_MIN_DAYS = 2
+CANDIDATE_TTL_DAYS = 30
+ACTIVE_TTL_DAYS = 60
 
 REVIEW_PROMPT = """\
 Ты — наставник крипто-аналитика Bottom. Ниже его прошлые сетапы с фактическим исходом по свечам, \
@@ -35,10 +49,14 @@ REVIEW_PROMPT = """\
 - Ищи закономерности: где стопы выбивает шумом (MAE до стопа, потом цель), где вход не \
 исполняется (слишком далёкий лимит), где цели недостижимы (MFE меньше TP1), какие монеты/сетапы \
 работают, в чём пользователи правы.
-- Не дублируй существующие уроки. Если факты противоречат уроку — удали его.
+- Каждый урок опирается на конкретные случаи: в квадратных скобках укажи их номера (S12 — сетап, \
+F3 — жалоба). Ссылаться можно только на случаи из этого списка. Без ссылок урок не принимается.
+- Не дублируй существующие уроки: если новый случай подтверждает существующий урок или кандидата — \
+подтверди его. Если факты противоречат уроку — отметь это (урок не удаляется, решает человек).
 Формат ответа — только строки:
-+ текст нового урока
-- #id причина удаления
++ текст нового урока [S12, F3]
+= #id [S15]
+! #id почему факты противоречат уроку [S16]
 Если сказать нечего — ответь одним словом: НЕТ."""
 
 
@@ -113,19 +131,40 @@ def evaluate_setup(setup: dict, candles: list[dict], now: float | None = None) -
     return {"status": "open", "outcome": "tp1_open" if tp1_hit else "in_trade", "r": r_now, **res}
 
 
-def parse_review(text: str) -> tuple[list[str], list[tuple[int, str]]]:
-    """'+ lesson' lines → new lessons; '- #id reason' lines → lessons to retire."""
-    new, retire = [], []
-    for line in text.splitlines():
-        line = line.strip()
+_REFS = re.compile(r"\[([^\]]*)\]\s*$")
+
+
+def _split_refs(body: str) -> tuple[str, list[str]]:
+    """'text [S12, F3]' → ('text', ['S12', 'F3'])."""
+    m = _REFS.search(body)
+    if not m:
+        return body.strip(), []
+    refs = re.findall(r"\b([SF]\d+)\b", m.group(1).upper())
+    return body[: m.start()].strip(), list(dict.fromkeys(refs))
+
+
+def parse_review(text: str) -> dict:
+    """Parse the reviewer's lines.
+
+    '+ lesson [S1, F2]' → new candidate; '= #id [S3]' → confirmation;
+    '! #id reason [S4]' → contradiction (the lesson gets contested, not deleted).
+    """
+    out: dict = {"new": [], "confirm": [], "contest": []}
+    for raw in text.splitlines():
+        line = raw.strip()
         if line.startswith("+"):
-            lesson = line[1:].strip()
-            if 10 <= len(lesson) <= 300:
-                new.append(lesson)
-        m = re.match(r"^-\s*#?(\d+)\s*(.*)$", line)
+            body, refs = _split_refs(line[1:])
+            if 10 <= len(body) <= 300:
+                out["new"].append((body, refs))
+            continue
+        m = re.match(r"^([=!])\s*#?(\d+)\s*(.*)$", line)
         if m:
-            retire.append((int(m.group(1)), m.group(2).strip()))
-    return new, retire
+            body, refs = _split_refs(m.group(3))
+            if m.group(1) == "=":
+                out["confirm"].append((int(m.group(2)), refs))
+            else:
+                out["contest"].append((int(m.group(2)), body, refs))
+    return out
 
 
 def published_setups(calc_results: list[dict], answer: str) -> list[dict]:
@@ -172,6 +211,13 @@ class Journal:
             );
             """
         )
+        have = {r[1] for r in self.db.execute("PRAGMA table_info(lessons)")}
+        for col, decl in (("status", "TEXT"), ("evidence", "TEXT DEFAULT '[]'"), ("last_confirmed", "REAL"),
+                          ("contest_reason", "TEXT")):
+            if col not in have:
+                self.db.execute(f"ALTER TABLE lessons ADD COLUMN {col} {decl}")
+        self.db.execute("UPDATE lessons SET status = CASE WHEN active=1 THEN 'active' ELSE 'retired' END "
+                        "WHERE status IS NULL")
         self.db.commit()
 
     # --- recording ---
@@ -212,31 +258,127 @@ class Journal:
         self.db.commit()
         return True
 
-    # --- lessons ---
+    # --- lessons: candidate → active (earned), contested, expired, retired ---
+
+    @staticmethod
+    def _today() -> str:
+        return time.strftime("%Y-%m-%d", time.gmtime())
 
     def add_lesson(self, text: str, kind: str = "manual") -> int:
-        cur = self.db.execute("INSERT INTO lessons(created, text, kind) VALUES (?,?,?)", (time.time(), text.strip(), kind))
-        self._cap_lessons()
+        """An admin lesson is adopted by a human → active immediately."""
+        now = time.time()
+        cur = self.db.execute(
+            "INSERT INTO lessons(created, text, kind, status, evidence, last_confirmed, active) "
+            "VALUES (?,?,?,?,?,?,1)",
+            (now, text.strip(), kind, "active", "[]", now),
+        )
         self.db.commit()
         return cur.lastrowid
 
-    def retire_lesson(self, lesson_id: int, reason: str = "") -> bool:
-        cur = self.db.execute("UPDATE lessons SET active=0, retired_reason=? WHERE id=? AND active=1", (reason, lesson_id))
+    def add_candidate(self, text: str, refs: list[str]) -> int:
+        ev = [{"ref": r, "day": self._today()} for r in refs]
+        cur = self.db.execute(
+            "INSERT INTO lessons(created, text, kind, status, evidence, last_confirmed, active) "
+            "VALUES (?,?,?,?,?,?,0)",
+            (time.time(), text.strip(), "auto", "candidate", json.dumps(ev), time.time()),
+        )
+        self.db.commit()
+        return cur.lastrowid
+
+    def _lesson(self, lesson_id: int) -> dict | None:
+        r = self.db.execute("SELECT id, text, kind, status, evidence FROM lessons WHERE id=?", (lesson_id,)).fetchone()
+        return {"id": r[0], "text": r[1], "kind": r[2], "status": r[3], "evidence": json.loads(r[4] or "[]")} if r else None
+
+    @staticmethod
+    def promotable(evidence: list[dict]) -> bool:
+        refs = {e["ref"] for e in evidence}
+        days = {e["day"] for e in evidence}
+        return len(refs) >= PROMOTE_MIN_CASES and len(days) >= PROMOTE_MIN_DAYS
+
+    def confirm(self, lesson_id: int, refs: list[str]) -> str | None:
+        """Add supporting cases; promote a candidate once it has earned it. Returns new status."""
+        les = self._lesson(lesson_id)
+        if les is None or les["status"] in ("retired", "expired") or not refs:
+            return None
+        known = {e["ref"] for e in les["evidence"]}
+        ev = les["evidence"] + [{"ref": r, "day": self._today()} for r in refs if r not in known]
+        status = les["status"]
+        if status == "candidate" and self.promotable(ev):
+            status = "active"
+        self.db.execute(
+            "UPDATE lessons SET evidence=?, last_confirmed=?, status=?, active=? WHERE id=?",
+            (json.dumps(ev), time.time(), status, int(status in ("active", "contested")), lesson_id),
+        )
+        self.db.commit()
+        return status
+
+    def contest(self, lesson_id: int, reason: str) -> bool:
+        """Evidence contradicts a lesson: mark it, never delete — a human decides."""
+        cur = self.db.execute(
+            "UPDATE lessons SET status='contested', contest_reason=? WHERE id=? AND status IN ('active','candidate')",
+            (reason[:300], lesson_id),
+        )
         self.db.commit()
         return cur.rowcount > 0
 
-    def _cap_lessons(self) -> None:
-        # keep manual lessons; drop the oldest auto lessons beyond the cap
-        n = self.db.execute("SELECT COUNT(*) FROM lessons WHERE active=1").fetchone()[0]
-        if n > MAX_ACTIVE_LESSONS:
-            self.db.execute(
-                "UPDATE lessons SET active=0, retired_reason='вытеснен новыми' WHERE id IN ("
-                "SELECT id FROM lessons WHERE active=1 AND kind='auto' ORDER BY created ASC LIMIT ?)",
-                (n - MAX_ACTIVE_LESSONS,),
-            )
+    def adopt(self, lesson_id: int) -> bool:
+        """Admin adopts a candidate or resolves a contested lesson in its favour."""
+        cur = self.db.execute(
+            "UPDATE lessons SET status='active', active=1, contest_reason=NULL, last_confirmed=? "
+            "WHERE id=? AND status IN ('candidate','contested')",
+            (time.time(), lesson_id),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
 
-    def active_lessons(self) -> list[tuple[int, str, str]]:
-        return self.db.execute("SELECT id, text, kind FROM lessons WHERE active=1 ORDER BY id").fetchall()
+    def retire_lesson(self, lesson_id: int, reason: str = "") -> bool:
+        cur = self.db.execute(
+            "UPDATE lessons SET status='retired', active=0, retired_reason=? WHERE id=? AND status!='retired'",
+            (reason, lesson_id),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def apply_forgetting(self, now: float | None = None) -> int:
+        """TTL for candidates and unconfirmed auto lessons + capacity bound on active ones."""
+        now = now or time.time()
+        n = self.db.execute(
+            "UPDATE lessons SET status='expired', active=0, retired_reason='не подтвердился за 30 дней' "
+            "WHERE status='candidate' AND created < ?",
+            (now - CANDIDATE_TTL_DAYS * 86400,),
+        ).rowcount
+        n += self.db.execute(
+            "UPDATE lessons SET status='expired', active=0, retired_reason='не подтверждался 60 дней' "
+            "WHERE kind='auto' AND status='active' AND COALESCE(last_confirmed, created) < ?",
+            (now - ACTIVE_TTL_DAYS * 86400,),
+        ).rowcount
+        over = self.db.execute("SELECT COUNT(*) FROM lessons WHERE status IN ('active','contested')").fetchone()[0]
+        if over > MAX_ACTIVE_LESSONS:
+            n += self.db.execute(
+                "UPDATE lessons SET status='expired', active=0, retired_reason='вытеснен новыми' WHERE id IN ("
+                "SELECT id FROM lessons WHERE status='active' AND kind='auto' "
+                "ORDER BY COALESCE(last_confirmed, created) ASC LIMIT ?)",
+                (over - MAX_ACTIVE_LESSONS,),
+            ).rowcount
+        self.db.commit()
+        return n
+
+    def active_lessons(self) -> list[tuple[int, str, str, str, str | None]]:
+        """Lessons that go into the prompt: active + contested (tagged). (id, text, kind, status, reason)."""
+        return self.db.execute(
+            "SELECT id, text, kind, status, contest_reason FROM lessons WHERE status IN ('active','contested') ORDER BY id"
+        ).fetchall()
+
+    def all_lessons(self) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT id, text, kind, status, evidence, contest_reason FROM lessons "
+            "WHERE status IN ('active','contested','candidate') ORDER BY status, id"
+        ).fetchall()
+        return [
+            {"id": r[0], "text": r[1], "kind": r[2], "status": r[3],
+             "cases": len({e["ref"] for e in json.loads(r[4] or "[]")}), "reason": r[5]}
+            for r in rows
+        ]
 
     # --- evaluation ---
 
@@ -335,8 +477,10 @@ class Learner:
                 f"{tr['avg_r_filled']}R. Исходы: {tr['by_outcome']}."
             )
         if lessons:
-            parts.append("Уроки из твоих прошлых ошибок и отзывов (соблюдай):\n" + "\n".join(
-                f"#{i} {t}" + (" (от админа)" if kind == "manual" else "") for i, t, kind in lessons))
+            parts.append("Уроки из твоих прошлых ошибок и отзывов (соблюдай; спорные — применяй осторожно):\n" + "\n".join(
+                f"#{i} {t}" + (" (от админа)" if kind == "manual" else "")
+                + (f" [СПОРНО: {reason}]" if status == "contested" else "")
+                for i, t, kind, status, reason in lessons))
         text = ("\n\n# 10. Опыт\n" + "\n".join(parts)) if parts else ""
         self._block_cache = (time.time(), text)
         return text
@@ -365,26 +509,49 @@ class Learner:
         return closed
 
     async def review(self) -> dict:
-        """Daily: closed setups + feedback → new lessons / retired lessons."""
+        """Daily: closed setups + feedback → candidates, confirmations, contests; then forgetting."""
         setups, fb = self.journal.unreviewed()
+        forgotten = self.journal.apply_forgetting()
         if not setups and not fb:
-            return {"new": 0, "retired": 0}
+            if forgotten:
+                self.invalidate()
+            return {"new": 0, "confirmed": 0, "promoted": 0, "contested": 0, "forgotten": forgotten}
+        shown = {f"S{s[0]}" for s in setups} | {f"F{f[0]}" for f in fb}
         lines = ["## Сетапы с исходом"]
         for (i, sym, d, lo, hi, stop, tg, rr, outcome, r, mfe, mae, q, _a) in setups:
-            lines.append(f"[{i}] {sym} {d} вход {lo}–{hi} стоп {stop} цели {tg} план R:R {rr} → {outcome}, "
+            lines.append(f"[S{i}] {sym} {d} вход {lo}–{hi} стоп {stop} цели {tg} план R:R {rr} → {outcome}, "
                          f"{r}R, MFE {mfe}%, MAE {mae}%. Вопрос: {q[:200]}")
         lines.append("\n## Жалобы пользователей")
         for (i, text, q, a) in fb:
-            lines.append(f"[{i}] Жалоба: {text}\nВопрос: {(q or '')[:300]}\nОтвет бота: {(a or '')[:700]}")
-        lines.append("\n## Текущие уроки")
-        lines += [f"#{i} {t}" for i, t, _k in self.journal.active_lessons()] or ["(нет)"]
+            lines.append(f"[F{i}] Жалоба: {text}\nВопрос: {(q or '')[:300]}\nОтвет бота: {(a or '')[:700]}")
+        lines.append("\n## Текущие уроки и кандидаты")
+        lessons = self.journal.all_lessons()
+        lines += [f"#{x['id']} ({x['status']}, случаев: {x['cases']}) {x['text']}" for x in lessons] or ["(нет)"]
         sess = self.backend.new_session(REVIEW_PROMPT, [], "\n".join(lines))
         res = await sess.step([], allow_tools=False)
-        new, retire = ([], []) if res.text.strip().upper().startswith("НЕТ") else parse_review(res.text)
-        for text in new:
-            self.journal.add_lesson(text, kind="auto")
-        n_ret = sum(self.journal.retire_lesson(i, reason) for i, reason in retire)
+        parsed = {"new": [], "confirm": [], "contest": []}
+        if not res.text.strip().upper().startswith("НЕТ"):
+            parsed = parse_review(res.text)
+        # cite, don't invent: only cases actually shown in this review count as evidence
+        new = confirmed = promoted = contested = 0
+        for text, refs in parsed["new"]:
+            refs = [r for r in refs if r in shown]
+            if refs:
+                self.journal.add_candidate(text, refs)  # candidates are never injected on day one
+                new += 1
+        for lid, refs in parsed["confirm"]:
+            refs = [r for r in refs if r in shown]
+            before = (self.journal._lesson(lid) or {}).get("status")
+            after = self.journal.confirm(lid, refs)
+            if after:
+                confirmed += 1
+                promoted += int(before == "candidate" and after == "active")
+        for lid, reason, refs in parsed["contest"]:
+            if [r for r in refs if r in shown] and self.journal.contest(lid, reason):
+                contested += 1
         self.journal.mark_reviewed([s[0] for s in setups], [f[0] for f in fb])
         self.invalidate()
-        log.info("Обучение: новых уроков %d, снято %d", len(new), n_ret)
-        return {"new": len(new), "retired": n_ret}
+        result = {"new": new, "confirmed": confirmed, "promoted": promoted, "contested": contested,
+                  "forgotten": forgotten}
+        log.info("Обучение: %s", result)
+        return result
