@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field
 HELP = (
     "Источники Telegram. Все читаются через твой аккаунт (он в них состоит). "
     "enabled — читать или нет; manual: true — scan не будет менять enabled; "
-    "verdict заполняет python -m swarm.tg scan."
+    "verdict заполняет python -m bottom.tg scan."
 )
 KINDS = ("channel", "group", "forum")
 

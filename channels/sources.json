@@ -1,5 +1,5 @@
 {
- "_help": "Источники Telegram. Все читаются через твой аккаунт (он в них состоит). enabled — читать или нет; manual: true — scan не будет менять enabled; verdict заполняет python -m swarm.tg scan.",
+ "_help": "Источники Telegram. Все читаются через твой аккаунт (он в них состоит). enabled — читать или нет; manual: true — scan не будет менять enabled; verdict заполняет python -m bottom.tg scan.",
  "sources": [
   {
    "id": -1002472080907,

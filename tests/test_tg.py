@@ -3,13 +3,13 @@ import time
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from swarm.config import Settings
-from swarm.tg.__main__ import apply_verdict, save_env, write_report
-from swarm.tg.classify import CRYPTO, NOT_CRYPTO, REVIEW, UNAVAILABLE, Verdict, classify, extract_cashtags
-from swarm.tg.client import Collector, kind_of, to_row, topic_of
-from swarm.tg.sources import Source, internal_id, load_sources, message_link, save_sources
-from swarm.tg.store import PRIVATE_LABEL, TgStore
-from swarm.tools.registry import Toolbox
+from bottom.config import Settings
+from bottom.tg.__main__ import apply_verdict, save_env, write_report
+from bottom.tg.classify import CRYPTO, NOT_CRYPTO, REVIEW, UNAVAILABLE, Verdict, classify, extract_cashtags
+from bottom.tg.client import Collector, kind_of, to_row, topic_of
+from bottom.tg.sources import Source, internal_id, load_sources, message_link, save_sources
+from bottom.tg.store import PRIVATE_LABEL, TgStore
+from bottom.tools.registry import Toolbox
 
 CRYPTO_POSTS = [
     "Зашёл в лонг $SOL от 142, стоп 136, тейк 155",
@@ -183,7 +183,7 @@ async def test_collector_backfill_then_incremental(tmp_path):
     st = TgStore(str(tmp_path / "c.db"))
     client = FakeTgClient([_m(3, 1, "пост 3"), _m(2, 5, ""), _m(1, 100, "очень старый")])
     src = Source(id=-1005, title="chan", kind="channel")
-    col = Collector(client, st, [src, Source(id=-1006, enabled=False)], backfill_hours=48)
+    col = Collector(client, st, [src, Source(id=-1006, enabled=False)], backfill_days=2)
     assert list(col.by_id) == [-1005]  # disabled sources are skipped
     col.entities[-1005] = "ENTITY"
     assert await col.sync_one(src) == 1  # only fresh text message

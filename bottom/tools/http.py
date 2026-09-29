@@ -12,7 +12,7 @@ def client() -> httpx.AsyncClient:
     if _client is None:
         _client = httpx.AsyncClient(
             timeout=httpx.Timeout(10.0),
-            headers={"User-Agent": "swarm-research-bot/0.1"},
+            headers={"User-Agent": "bottom-research-bot/0.1"},
             follow_redirects=True,
         )
     return _client

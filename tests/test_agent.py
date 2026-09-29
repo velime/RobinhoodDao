@@ -3,12 +3,12 @@ from types import SimpleNamespace
 
 from aiogram.enums import ChatType
 
-from swarm.agent import LIMIT_NOTE, Agent
-from swarm.bot import extract_question
-from swarm.config import Settings
-from swarm.llm import Session, StepResult, ToolCall
-from swarm.storage import Storage
-from swarm.tools.registry import Toolbox
+from bottom.agent import LIMIT_NOTE, Agent
+from bottom.bot import extract_question
+from bottom.config import Settings
+from bottom.llm import Session, StepResult, ToolCall
+from bottom.storage import Storage
+from bottom.tools.registry import Toolbox
 
 
 class ScriptedSession(Session):
@@ -38,7 +38,7 @@ class FakeBackend:
         self.log = []
 
     def new_session(self, system, history, user):
-        assert "Swarm" in system and "[Сейчас" in user
+        assert "Bottom" in system and "[Сейчас" in user
         return ScriptedSession(self.log)
 
 
@@ -83,11 +83,11 @@ def _msg(text, chat_type, reply_from_id=None):
 
 
 def test_extract_question():
-    assert extract_question(_msg("что с BTC", ChatType.PRIVATE), "swarm_bot", 1) == "что с BTC"
-    assert extract_question(_msg("что с BTC", ChatType.SUPERGROUP), "swarm_bot", 1) is None
-    assert extract_question(_msg("@Swarm_Bot что с BTC", ChatType.SUPERGROUP), "swarm_bot", 1) == "что с BTC"
-    assert extract_question(_msg("а лонг?", ChatType.GROUP, reply_from_id=1), "swarm_bot", 1) == "а лонг?"
-    assert extract_question(_msg("а лонг?", ChatType.GROUP, reply_from_id=2), "swarm_bot", 1) is None
+    assert extract_question(_msg("что с BTC", ChatType.PRIVATE), "bottom_bot", 1) == "что с BTC"
+    assert extract_question(_msg("что с BTC", ChatType.SUPERGROUP), "bottom_bot", 1) is None
+    assert extract_question(_msg("@Bottom_Bot что с BTC", ChatType.SUPERGROUP), "bottom_bot", 1) == "что с BTC"
+    assert extract_question(_msg("а лонг?", ChatType.GROUP, reply_from_id=1), "bottom_bot", 1) == "а лонг?"
+    assert extract_question(_msg("а лонг?", ChatType.GROUP, reply_from_id=2), "bottom_bot", 1) is None
 
 
 def test_storage(tmp_path):

@@ -61,6 +61,8 @@ class Settings:
     llm: LLMConfig = field(default_factory=LLMConfig)
     llm_fallback: LLMConfig | None = None
     llm_cooldown_sec: int = 600
+    vision_llm: LLMConfig | None = None  # None → use the main model
+    vision_daily_limit: int = 300
     max_steps_per_question: int = 12
     daily_steps_per_user: int = 50
     admin_ids: tuple[int, ...] = ()
@@ -76,8 +78,11 @@ class Settings:
     tg_sources_file: str = "channels/sources.json"
     tg_resync_minutes: int = 60
     tg_show_private: bool = False
+    tg_backfill_days: int = 30  # 0 = whole channel history
+    tg_keep_days: int = 180  # 0 = keep forever
+    learn_hour_utc: int = 3  # when to run the daily lessons review
     timezone: str = "Europe/Kyiv"
-    db_path: str = "swarm.db"
+    db_path: str = "bottom.db"
     log_level: str = "INFO"
     risk: RiskRules = field(default_factory=RiskRules)
 
@@ -104,6 +109,8 @@ def load_settings() -> Settings:
         llm=_llm("LLM_") or LLMConfig(),
         llm_fallback=_llm("FALLBACK_LLM_"),
         llm_cooldown_sec=_int("LLM_COOLDOWN_SEC", 600),
+        vision_llm=_llm("VISION_LLM_"),
+        vision_daily_limit=_int("VISION_DAILY_LIMIT", 300),
         max_steps_per_question=_int("MAX_STEPS_PER_QUESTION", 12),
         daily_steps_per_user=_int("DAILY_STEPS_PER_USER", 50),
         admin_ids=tuple(int(x) for x in _list("ADMIN_IDS")),
@@ -121,8 +128,11 @@ def load_settings() -> Settings:
         tg_sources_file=os.getenv("TG_SOURCES_FILE", "channels/sources.json"),
         tg_resync_minutes=_int("TG_RESYNC_MINUTES", 60),
         tg_show_private=os.getenv("TG_SHOW_PRIVATE", "").lower() in ("1", "true", "yes"),
+        tg_backfill_days=_int("TG_BACKFILL_DAYS", 30),
+        tg_keep_days=_int("TG_KEEP_DAYS", 180),
+        learn_hour_utc=_int("LEARN_HOUR_UTC", 3),
         timezone=os.getenv("TIMEZONE", "Europe/Kyiv"),
-        db_path=os.getenv("DB_PATH", "swarm.db"),
+        db_path=os.getenv("DB_PATH", "bottom.db"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         risk=RiskRules(
             min_rr=_float("MIN_RR", 1.3),

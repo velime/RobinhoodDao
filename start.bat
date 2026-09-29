@@ -24,7 +24,7 @@ if errorlevel 1 (
 if not exist ".env" copy ".env.example" ".env" >nul
 echo Запускаю бота. Чтобы остановить - закрой это окно или нажми Ctrl+C.
 echo.
-python -m swarm
+python -m bottom
 echo.
 echo Бот остановлен. Если выше есть ошибка - пришли её текст.
 pause

@@ -110,6 +110,12 @@ async def crypto_news(query: str = "", hours: int = 48, cryptopanic_key: str = "
     return out
 
 
+def _tweet_images(t: dict) -> list[str]:
+    media = ((t.get("extendedEntities") or {}).get("media") or []) + ((t.get("entities") or {}).get("media") or [])
+    urls = [m.get("media_url_https") or m.get("url") for m in media if m.get("type", "photo") == "photo"]
+    return list(dict.fromkeys(u for u in urls if u))[:4]
+
+
 def _tweet(t: dict) -> dict:
     a = t.get("author") or {}
     return {
@@ -122,6 +128,7 @@ def _tweet(t: dict) -> dict:
         "retweets": t.get("retweetCount"),
         "views": t.get("viewCount"),
         "url": t.get("url"),
+        "images": _tweet_images(t) or None,  # describe with analyze_image(ref=<url>) if relevant
     }
 
 

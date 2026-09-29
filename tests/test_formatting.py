@@ -1,4 +1,4 @@
-from swarm.formatting import strip_markup, to_html_blocks, to_telegram_chunks
+from bottom.formatting import strip_markup, to_html_blocks, to_telegram_chunks
 
 
 def test_escape_and_bold():

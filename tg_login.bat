@@ -23,5 +23,5 @@ if errorlevel 1 (
 )
 echo Вход в твой Telegram-аккаунт (нужен один раз).
 echo.
-python -m swarm.tg login
+python -m bottom.tg login
 pause

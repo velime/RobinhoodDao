@@ -22,5 +22,5 @@ if errorlevel 1 (
   )
 )
 if not exist ".env" copy ".env.example" ".env" >nul
-python -m swarm.check
+python -m bottom.check
 pause

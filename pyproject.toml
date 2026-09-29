@@ -1,7 +1,7 @@
 [project]
-name = "swarm"
+name = "bottom"
 version = "0.1.0"
-description = "Swarm: Telegram crypto research agent (answers questions, does not post calls)"
+description = "Bottom: Telegram crypto research agent (answers questions, does not post calls)"
 requires-python = ">=3.11"
 dependencies = [
     "aiogram>=3.20",
@@ -21,7 +21,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["swarm*"]
+include = ["bottom*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

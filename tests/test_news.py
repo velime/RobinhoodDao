@@ -1,4 +1,4 @@
-from swarm.tools.news import _parse_rss, _tweet
+from bottom.tools.news import _parse_rss, _tweet
 
 RSS = """<?xml version="1.0"?><rss><channel>
 <item><title>Bitcoin hits $70K</title><description>&lt;p&gt;BTC rallies&lt;/p&gt;</description>

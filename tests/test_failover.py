@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from swarm.config import LLMConfig, Settings, load_settings
-from swarm.llm import (
+from bottom.config import LLMConfig, Settings, load_settings
+from bottom.llm import (
     FailoverBackend,
     OpenAICompatBackend,
     OpenAICompatSession,

@@ -1,4 +1,4 @@
-"""Check the setup: python -m swarm.check
+"""Check the setup: python -m bottom.check
 
 Verifies .env and that every service answers, with a hint for each problem.
 """
@@ -93,7 +93,7 @@ async def run() -> int:
 
     await http.close()
 
-    print("\nПроверка настроек Swarm\n")
+    print("\nПроверка настроек Bottom\n")
     for status, what, hint in rows:
         print(f"{status} {what}: {hint}")
     fails = sum(1 for r in rows if r[0] == FAIL)

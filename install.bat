@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-echo === Установка Swarm ===
+echo === Установка Bottom ===
 where python >nul 2>nul
 if errorlevel 1 (
   echo.

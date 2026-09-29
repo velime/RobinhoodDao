@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from ..config import Settings
+from . import crosscheck as cc
 from . import derivatives as deriv
 from . import exchanges as exch
 from . import fundamentals as fund
@@ -37,9 +38,12 @@ SYM = {"type": "string", "description": "Тикер без пары: BTC, HYPE, 
 
 
 class Toolbox:
-    def __init__(self, settings: Settings, tg_store=None):
+    def __init__(self, settings: Settings, tg_store=None, collector=None, vision=None, journal=None):
         self.s = settings
         self.tg_store = tg_store
+        self.collector = collector
+        self.vision = vision
+        self.journal = journal
         self.pool = exch.ExchangePool(settings.exchanges)
         self.tools: dict[str, Tool] = {}
         self._register()
@@ -222,20 +226,87 @@ class Toolbox:
         if self.tg_store is not None:
             store = self.tg_store
 
-            async def tg_posts(query: str = "", hours: int = 24) -> dict:
-                return store.search(query, int(hours), hide_private=not s.tg_show_private)
+            async def tg_posts(query: str = "", hours: int = 24, source: str = "", limit: int = 25) -> dict:
+                hours = max(1, min(int(hours), 24 * 180))
+                return store.search(query, hours, limit=max(1, min(int(limit), 60)),
+                                    hide_private=not s.tg_show_private, source=source)
 
             self._add(
                 "telegram_channels",
-                "Сообщения отслеживаемых крипто-Telegram-каналов и чатов (колы, мнения, алерты, болтовня): "
-                "по тикеру — сколько каналов/чатов упоминают, динамика упоминаний и сами сообщения; без "
-                "тикера — свежие посты каналов и самые обсуждаемые $тикеры. Это мнения, НЕ источник цифр рынка.",
+                "Сообщения отслеживаемых крипто-Telegram-каналов и чатов (колы, мнения, алерты, скрины): "
+                "по тикеру — сколько каналов/чатов упоминают, первое упоминание, динамика и сами сообщения "
+                "(с описанием картинок); source — прочитать конкретный канал целиком за период; без тикера — "
+                "свежие посты и самые обсуждаемые $тикеры. Это мнения, НЕ источник цифр рынка.",
                 {
                     "query": {"type": "string", "description": "Тикер или слово; пусто — что обсуждают сейчас"},
-                    "hours": {"type": "integer", "description": "За сколько часов (по умолчанию 24)"},
+                    "hours": {"type": "integer", "description": "За сколько часов (по умолчанию 24, до 4320)"},
+                    "source": {"type": "string", "description": "Только этот канал/чат: @username или часть названия"},
+                    "limit": {"type": "integer", "description": "Сколько сообщений вернуть (по умолчанию 25, до 60)"},
                 },
                 [], "💬 Читаю Telegram-каналы",
                 tg_posts,
+            )
+        if self.journal is not None:
+            journal = self.journal
+
+            async def track_record(symbol: str = "", days: int = 90) -> dict:
+                return journal.track_record(symbol, int(days))
+
+            self._add(
+                "track_record",
+                "Твоя собственная история сетапов: сколько было, исходы (стоп/TP1/TP2/не исполнился), винрейт, "
+                "средний R, MFE/MAE; можно по тикеру. Проверяй перед новым сетапом — особенно по той же монете.",
+                {
+                    "symbol": {"type": "string", "description": "Тикер; пусто — все сетапы"},
+                    "days": {"type": "integer", "description": "За сколько дней (по умолчанию 90)"},
+                },
+                [], "📒 Смотрю свою статистику",
+                track_record,
+            )
+        store_for_cc = self.tg_store
+
+        async def cross_check(topic: str, hours: int = 24) -> dict:
+            return await cc.cross_check(
+                topic, hours, tg_store=store_for_cc, hide_private=not s.tg_show_private,
+                x_key=s.twitterapi_io_key, cryptopanic_key=s.cryptopanic_api_key, pool=self.pool,
+            )
+
+        self._add(
+            "cross_check",
+            "Сопоставить одну новость/тему/тикер по ВСЕМ источникам сразу: Telegram-каналы и чаты, X, "
+            "крипто-СМИ + цена. Даёт хронологию, кто написал первым, сколько независимых источников, волны "
+            "репостов, реакцию цены с первого упоминания и за 6ч до него. Используй для любой новости, слуха, "
+            "пампа или «почему растёт/падает».",
+            {
+                "topic": {"type": "string", "description": "Тикер (HYPE) или тема (\"Binance listing\", \"TON Durov\")"},
+                "hours": {"type": "integer", "description": "Окно в часах (по умолчанию 24, до 720)"},
+            },
+            ["topic"], "🔀 Сопоставляю источники",
+            cross_check,
+        )
+        if self.vision is not None and self.vision.enabled:
+            vision, collector = self.vision, self.collector
+
+            async def analyze_image(ref: str) -> dict:
+                if ref.startswith("tg:"):
+                    if collector is None:
+                        return {"error": "Telegram-сборщик не запущен"}
+                    _, chat_id, msg_id = ref.split(":")
+                    cached = collector.store.get_message(int(chat_id), int(msg_id))
+                    if cached and cached.get("image_text"):
+                        return {"ref": ref, "description": cached["image_text"], "cached": True}
+                    return {"ref": ref, "description": await collector.describe_message(int(chat_id), int(msg_id))}
+                if ref.startswith("http"):
+                    return {"ref": ref, "description": await vision.describe_url(ref)}
+                return {"error": "ref должен быть tg:<chat_id>:<msg_id> или https-ссылкой на картинку"}
+
+            self._add(
+                "analyze_image",
+                "Разобрать картинку: график с уровнями, скрин позиции/PnL, скрин новости, ончейн-скрин. ref — "
+                "'tg:<chat_id>:<msg_id>' из telegram_channels (поле image) или https-ссылка из твита (images). "
+                "Вызывай, когда картинка важна для вывода.",
+                {"ref": {"type": "string"}}, ["ref"], "🖼 Смотрю картинку",
+                analyze_image,
             )
         if s.tavily_api_key:
             self._add(

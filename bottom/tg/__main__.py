@@ -1,9 +1,9 @@
 """Telegram CLI (все источники читаются через твой аккаунт).
 
-  python -m swarm.tg login              — войти в аккаунт (один раз, создаёт файл сессии)
-  python -m swarm.tg scan [опции]       — один раз проверить источники: крипта или нет
-  python -m swarm.tg collect [--once]   — собирать сообщения без бота (--once: только догрузить и выйти)
-  python -m swarm.tg search [ТИКЕР]     — посмотреть, что собрано (упоминания тикера / что обсуждают)
+  python -m bottom.tg login              — войти в аккаунт (один раз, создаёт файл сессии)
+  python -m bottom.tg scan [опции]       — один раз проверить источники: крипта или нет
+  python -m bottom.tg collect [--once]   — собирать сообщения без бота (--once: только догрузить и выйти)
+  python -m bottom.tg search [ТИКЕР]     — посмотреть, что собрано (упоминания тикера / что обсуждают)
 """
 
 from __future__ import annotations
@@ -192,7 +192,11 @@ async def cmd_collect(s, args) -> None:
     sources = _sources(s)
     client = await _connect(s, receive_updates=not args.once)
     store = TgStore(s.db_path)
-    col = Collector(client, store, sources, resync_minutes=s.tg_resync_minutes)
+    from ..vision import make_vision
+
+    vision = make_vision(s)
+    col = Collector(client, store, sources, backfill_days=s.tg_backfill_days, resync_minutes=s.tg_resync_minutes,
+                    keep_days=s.tg_keep_days, vision=vision if vision.enabled else None)
     await col.start()
     if args.once:
         n = await col.sync_all()
@@ -205,12 +209,12 @@ async def cmd_collect(s, args) -> None:
 
 def cmd_search(s, args) -> None:
     store = TgStore(s.db_path)
-    res = store.search(args.query or "", args.hours, limit=args.limit, hide_private=False)
+    res = store.search(args.query or "", args.hours, limit=args.limit, hide_private=False, source=args.source)
     print(json.dumps(res, ensure_ascii=False, indent=1))
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(prog="python -m swarm.tg")
+    p = argparse.ArgumentParser(prog="python -m bottom.tg")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("login")
     sc = sub.add_parser("scan")
@@ -225,6 +229,7 @@ def main() -> None:
     se.add_argument("query", nargs="?", default="")
     se.add_argument("--hours", type=int, default=24)
     se.add_argument("--limit", type=int, default=15)
+    se.add_argument("--source", default="", help="только этот канал/чат (username или часть названия)")
     args = p.parse_args()
 
     s = load_settings()

@@ -1,5 +1,5 @@
-from swarm.config import RiskRules
-from swarm.tools.setup_calc import calc_setup
+from bottom.config import RiskRules
+from bottom.tools.setup_calc import calc_setup
 
 RULES = RiskRules(min_rr=1.3, min_stop_pct_major=1.5, min_stop_pct_alt=3.0, min_stop_atr_mult=1.5)
 
@@ -20,7 +20,7 @@ def test_published_maga_calls_pass():
 
 
 def test_pengu_chat_setup_rejected_for_rr():
-    # Swarm in chat claimed "R:R ≈ 1:3–5", but TP1 +0.9% vs stop −3.7%
+    # The reference Swarm bot in chat claimed "R:R ≈ 1:3–5", but TP1 +0.9% vs stop −3.7%
     r = calc_setup(RULES, "PENGU", "long", 0.00592, 0.00574, [0.006, 0.0066, 0.007], entry_high=0.00595)
     assert r["verdict"] == "REJECT"
     assert r["rr_tp1"] < 0.5

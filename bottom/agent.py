@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo
 
+from .learning import published_setups
 from .llm import Session, ToolCall
 from .prompts import system_prompt
 from .tools.registry import Toolbox
@@ -27,18 +29,24 @@ REFUSED_ANSWER = "С этим запросом помочь не могу."
 class AgentResult:
     text: str
     steps: int
+    setups: list = field(default_factory=list)  # calc_setup OK results that made it into the answer
 
 
 StatusCallback = Callable[[str], Awaitable[None]]
 
 
 class Agent:
-    def __init__(self, backend, toolbox: Toolbox, tz: str, max_steps: int):
+    def __init__(self, backend, toolbox: Toolbox, tz: str, max_steps: int, learner=None):
         self.backend = backend
         self.toolbox = toolbox
         self.tz = ZoneInfo(tz)
         self.max_steps = max_steps
+        self.learner = learner
         self.system = system_prompt(toolbox.s.risk)
+
+    def system_text(self) -> str:
+        """Static rules + (changes about daily) experience block: track record and lessons."""
+        return self.system + (self.learner.lessons_block() if self.learner else "")
 
     def _stamp(self) -> str:
         now = datetime.now(timezone.utc)
@@ -53,10 +61,11 @@ class Agent:
         step_budget: int | None = None,
     ) -> AgentResult:
         budget = min(self.max_steps, step_budget if step_budget is not None else self.max_steps)
-        session: Session = self.backend.new_session(self.system, history, f"{self._stamp()}\n{question}")
+        session: Session = self.backend.new_session(self.system_text(), history, f"{self._stamp()}\n{question}")
         tools = self.toolbox.schemas()
         steps = 0
         limit_noted = False
+        calcs: list[dict] = []
 
         for _ in range(self.max_steps + 4):
             allow = steps < budget
@@ -67,7 +76,8 @@ class Agent:
             if res.refused:
                 return AgentResult(REFUSED_ANSWER, steps)
             if not res.calls:
-                return AgentResult(res.text.strip() or EMPTY_ANSWER, steps)
+                text = res.text.strip() or EMPTY_ANSWER
+                return AgentResult(text, steps, published_setups(calcs, text))
 
             runnable = res.calls[: max(budget - steps, 0)]
             skipped = res.calls[len(runnable):]
@@ -75,6 +85,12 @@ class Agent:
                 labels = list(dict.fromkeys(self.toolbox.label(c.name) for c in runnable))
                 await on_status(" · ".join(labels))
             outputs = await asyncio.gather(*(self._run(c) for c in runnable))
+            for c, out in zip(runnable, outputs):
+                if c.name == "calc_setup":
+                    try:
+                        calcs.append(json.loads(out))
+                    except json.JSONDecodeError:
+                        pass
             results = list(zip(runnable, outputs)) + [
                 (c, '{"error":"бюджет шагов исчерпан, инструмент не вызван"}') for c in skipped
             ]

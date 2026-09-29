@@ -110,7 +110,7 @@ class OpenAICompatBackend:
         # few retries: on a rate limit it is better to switch to the fallback quickly
         self.client = AsyncOpenAI(api_key=cfg.api_key or "none", base_url=cfg.base_url, max_retries=1)
         self.extra_headers = (
-            {"HTTP-Referer": "https://github.com/velime/RobinhoodDao", "X-Title": "Swarm research bot"}
+            {"HTTP-Referer": "https://github.com/velime/RobinhoodDao", "X-Title": "Bottom research bot"}
             if "openrouter" in cfg.base_url
             else {}
         )

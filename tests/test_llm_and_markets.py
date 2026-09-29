@@ -1,10 +1,10 @@
 from types import SimpleNamespace
 
-from swarm.config import Settings
-from swarm.llm import AnthropicSession, OpenAICompatSession
-from swarm.prompts import FAQ
-from swarm.tools.exchanges import find_market
-from swarm.tools.registry import Toolbox
+from bottom.config import Settings
+from bottom.llm import AnthropicSession, OpenAICompatSession
+from bottom.prompts import FAQ
+from bottom.tools.exchanges import find_market
+from bottom.tools.registry import Toolbox
 
 
 class FakeCompletions:

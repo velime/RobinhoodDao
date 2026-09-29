@@ -24,6 +24,6 @@ if errorlevel 1 (
     exit /b 1
   )
 )
-python -m swarm.tg scan %*
+python -m bottom.tg scan %*
 if exist "channels\report.md" notepad "channels\report.md"
 pause
