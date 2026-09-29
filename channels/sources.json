@@ -1049,7 +1049,8 @@
    "public": true,
    "enabled": true,
    "verdict": null,
-   "note": null
+   "note": "новости: не только крипта, но влияют на рынок (Дуров — TON) — закреплён вручную",
+   "manual": true
   },
   {
    "id": -1001551358677,
@@ -1119,7 +1120,8 @@
    "public": true,
    "enabled": true,
    "verdict": null,
-   "note": null
+   "note": "новости: не только крипта, но влияют на рынок (Дуров — TON) — закреплён вручную",
+   "manual": true
   },
   {
    "id": -1001869117977,
@@ -1319,7 +1321,8 @@
    "public": true,
    "enabled": true,
    "verdict": null,
-   "note": null
+   "note": "новости: не только крипта, но влияют на рынок (Дуров — TON) — закреплён вручную",
+   "manual": true
   },
   {
    "id": -1004463676723,
@@ -1547,9 +1550,10 @@
    "title": "Павел Дуров",
    "kind": "channel",
    "public": true,
-   "enabled": false,
+   "enabled": true,
    "verdict": null,
-   "note": "похоже не крипта — выключен; включи вручную (enabled: true), если нужен"
+   "note": "новости: не только крипта, но влияют на рынок (Дуров — TON) — закреплён вручную",
+   "manual": true
   },
   {
    "id": -1003147452065,
@@ -1877,9 +1881,10 @@
    "title": "Pavel Durov",
    "kind": "channel",
    "public": false,
-   "enabled": false,
+   "enabled": true,
    "verdict": null,
-   "note": "похоже не крипта — выключен; включи вручную (enabled: true), если нужен"
+   "note": "новости: не только крипта, но влияют на рынок (Дуров — TON) — закреплён вручную",
+   "manual": true
   },
   {
    "id": -1003019174187,

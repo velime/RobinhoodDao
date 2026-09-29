@@ -12,9 +12,9 @@ load_dotenv(find_dotenv(usecwd=True))
 
 # Crypto news feeds and influencers on X. Override with X_ACCOUNTS in .env.
 DEFAULT_X_ACCOUNTS = (
-    # news / on-chain alerts
+    # news / on-chain alerts (incl. general news that moves crypto: Durov → TON, macro headlines)
     "WatcherGuru,tier10k,WuBlockchain,lookonchain,EmberCN,whale_alert,"
-    "Cointelegraph,CoinDesk,TheBlock__,"
+    "Cointelegraph,CoinDesk,TheBlock__,durov,DeItaone,"
     # traders / influencers
     "CryptoHayes,HsakaTrades,GCRClassic,CryptoKaleo,Pentosh1,CryptoDonAlt,"
     "blknoiz06,AltcoinSherpa,inversebrah,cobie"

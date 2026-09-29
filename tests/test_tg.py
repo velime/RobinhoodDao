@@ -57,8 +57,8 @@ def test_repo_sources_file():
     assert len(src) == 194 and len({s.id for s in src}) == 194
     assert sum(s.public for s in src) == 160 and sum(not s.public for s in src) == 34
     assert {s.kind for s in src} == {"channel", "group", "forum"}
-    durov = [s for s in src if s.title in ("Павел Дуров", "Pavel Durov")]
-    assert durov and not any(s.enabled for s in durov)
+    news = [s for s in src if s.title in ("Павел Дуров", "Pavel Durov", "MarketTwits", "Walter Bloomberg")]
+    assert len(news) == 4 and all(s.enabled and s.manual for s in news)  # scan must not switch them off
 
 
 def test_sources_roundtrip_keeps_unknown_fields(tmp_path):
