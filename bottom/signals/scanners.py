@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 
 from ..tools import derivatives as deriv_flow
+from ..tools import chainflows as cf
 from ..tools import feeds, oicard, onchain, spreads, transfers
 from ..tools.exchanges import ExchangePool
 from ..tools.ultra import classify
@@ -104,12 +106,9 @@ class OIScanner(Scanner):
             c["ad_perp_usd"] = ((flow.get("perp") or {}).get("4h") or {}).get("net_usd")
         except Exception:  # noqa: BLE001
             pass
-        caps = self.store.get("mcap", {})
-        if not caps or time.time() - caps.get("_ts", 0) > 3600:
-            caps = await market_caps()
-            self.store.put("mcap", caps)
-        if caps.get(c["base"]):
-            c["oi_mcap_pct"] = round(c["oi_usd"] / caps[c["base"]] * 100, 2)
+        st = await ensure_stats(self.store)
+        if st.get(c["base"]):
+            c["oi_mcap_pct"] = round(c["oi_usd"] / st[c["base"]][0] * 100, 2)
         return c
 
     async def scan(self) -> list[Alert]:
@@ -158,9 +157,9 @@ class OIScanner(Scanner):
         return alerts
 
 
-async def market_caps() -> dict:
-    """symbol → largest market cap among the top 1000 coins (CoinGecko, 4 requests)."""
-    caps: dict = {"_ts": time.time()}
+async def coin_stats() -> dict:
+    """symbol → [market cap, 24h volume] of the largest coin with that symbol in the top 1000 (CoinGecko)."""
+    out: dict = {"_ts": time.time()}
     for page in range(1, 5):
         try:
             rows = await feeds.http.get_json("https://api.coingecko.com/api/v3/coins/markets",
@@ -169,9 +168,23 @@ async def market_caps() -> dict:
             break
         for c in rows:
             s, mc = (c.get("symbol") or "").upper(), c.get("market_cap") or 0
-            if mc and mc > caps.get(s, 0):
-                caps[s] = mc
-    return caps
+            if mc and mc > (out.get(s) or [0])[0]:
+                out[s] = [mc, c.get("total_volume") or 0]
+    return out
+
+
+def cached_stats(store: SignalStore) -> dict:
+    return store.get("cgstats", {}) or {}
+
+
+async def ensure_stats(store: SignalStore) -> dict:
+    st = cached_stats(store)
+    if not st or time.time() - st.get("_ts", 0) > 3600:
+        fresh = await coin_stats()
+        if len(fresh) > 1:
+            store.put("cgstats", fresh)
+            st = fresh
+    return st
 
 
 # ---------------------------------------------------------------------- funding
@@ -268,7 +281,7 @@ async def refresh_dex(store: SignalStore, trows: list[dict], bases: set[str], lo
 
 
 class SpreadScanner(Scanner):
-    """Spot/DEX transfer spreads with route check (deposit/withdraw), lifetime and depth."""
+    """perp↔perp across all exchanges, spot↔perp (CEX spot and DEX of the real contract), index checks."""
 
     feed, every_attr = "spreads", "spreads_every"
 
@@ -279,76 +292,87 @@ class SpreadScanner(Scanner):
     async def close(self) -> None:
         await self.pool.close()
 
+    def _dex(self, base: str, now: float) -> list[dict]:
+        out = []
+        for k, p in self.store.get_prefix(f"dexp:{base}:").items():
+            ch = k.split(":", 2)[2]
+            if now - p.get("ts", 0) < 1800 and p.get("price_usd"):
+                out.append({"venue": f"DEX {ch} {p.get('dex')}", "ex": "dex", "kind": "dex", "base": base,
+                            "chain": p.get("chain"), "canon_chain": ch, "pool": p.get("pair_address"),
+                            "contract": p.get("contract"), "price": p["price_usd"],
+                            "liquidity_usd": p.get("liquidity_usd"), "vol24_usd": p.get("volume_24h_usd"),
+                            "url": p.get("url")})
+        return out
+
     async def scan(self) -> list[Alert]:
-        rows, errors = await feeds.snapshot(list(self.cfg.exchanges) or None, ("spot",))
+        rows, errors = await feeds.snapshot(list(self.cfg.exchanges) or None, ("perp", "spot"))
         if errors:
-            log.info("spot feeds failed: %s", errors)
+            log.info("feeds failed: %s", errors)
+        cfg = self.cfg
+        perp_bases = {r["base"] for r in rows if r["kind"] == "perp" and (r.get("vol24_usd") or 0) >= cfg.spread_min_vol}
         trows, _ = await transfers.all_statuses()
-        bases = {r["base"] for r in rows if (r.get("vol24_usd") or 0) >= self.cfg.spread_min_vol}
-        await refresh_dex(self.store, trows, bases, self.cfg.dex_lookups_per_cycle)
-        dexp = self.store.get_prefix("dexp:")
-        venues: dict[str, list] = {}
+        await refresh_dex(self.store, trows, perp_bases, cfg.dex_lookups_per_cycle)
+        by_base: dict[str, list] = {}
         for r in rows:
-            venues.setdefault(r["base"], []).append(
-                {"venue": f"{fmt.ex_name(r['ex'])} spot", "ex": r["ex"], "kind": "spot", "base": r["base"],
-                 "price": r["price"], "vol24_usd": r.get("vol24_usd")})
+            if r["base"] in perp_bases:
+                by_base.setdefault(r["base"], []).append(r)
         now = time.time()
-        for k, p in dexp.items():
-            _, base, ch = k.split(":", 2)
-            if now - p.get("ts", 0) < 1800 and base in venues:
-                venues[base].append({"venue": f"DEX {ch} {p.get('dex')}", "ex": "dex", "kind": "dex", "base": base,
-                                     "chain": p.get("chain"), "canon_chain": ch, "pool": p.get("pair_address"),
-                                     "contract": p.get("contract"), "price": p.get("price_usd"),
-                                     "liquidity_usd": p.get("liquidity_usd"), "vol24_usd": p.get("volume_24h_usd"),
-                                     "url": p.get("url")})
-        ts = int(now)
-        gap = int(self.every * 2.5)
+        ts, gap = int(now), int(self.every * 2.5)
         cands = []
-        for base, vs in venues.items():
-            best = spreads.pairs(vs, self.cfg.spread_min_vol).get("transfer")
-            if not best or not (self.cfg.spread_min_pct <= best["gross_pct"] <= self.cfg.spread_max_pct):
-                continue
-            buy, sell = best["buy"], best["sell"]
-            if buy["kind"] == "dex" and sell["kind"] == "dex":
-                continue
-            if buy["kind"] == "dex":
-                route = spreads.dex_route(trows, base, buy, sell["ex"], "to_cex")
-            elif sell["kind"] == "dex":
-                route = spreads.dex_route(trows, base, sell, buy["ex"], "from_cex")
-            else:
-                route = transfers.route(trows, base, buy["ex"], sell["ex"])
-            key = f"{base}|{buy['venue']}|{sell['venue']}"
-            self.store.add_spread(key, ts, best["gross_pct"])
-            if route["status"] == "closed" and not self.cfg.spread_show_closed:
-                continue
-            cands.append((base, best, route, key))
+        for base, rs in by_base.items():
+            vs = spreads.venues_from_rows(rs, base) + self._dex(base, now)
+            idx = spreads.index_checks(vs, idx_dev=cfg.index_dev_pct, perp_dev=cfg.index_dev_pct,
+                                       spot_dev=cfg.index_dev_pct, min_vol=cfg.spread_min_vol)
+            pp = spreads.perp_pair(vs, cfg.spread_min_vol)
+            if pp and cfg.perp_spread_min_pct <= pp["gross_pct"] <= cfg.spread_max_pct:
+                cands.append(("perp_perp", base, pp, pp["long"], pp["short"], idx))
+            sp = spreads.spot_perp_pair(vs, cfg.spread_min_vol)
+            if sp and cfg.spot_perp_min_pct <= abs(sp["gross_pct"]) <= cfg.spread_max_pct:
+                cheap, dear = (sp["spot"], sp["perp"]) if sp["gross_pct"] > 0 else (sp["perp"], sp["spot"])
+                cands.append(("spot_perp", base, sp, cheap, dear, idx))
+            if idx["flags"]:
+                cands.append(("index", base, None, None, None, idx))
+        for kind, base, pair, cheap, dear, _ in cands:
+            if pair:
+                self.store.add_spread(f"{kind}|{base}|{cheap['venue']}|{dear['venue']}", ts, abs(pair["gross_pct"]))
         self.store.db.commit()
         alerts = []
-        for base, best, route, key in sorted(cands, key=lambda c: -c[1]["gross_pct"]):
-            start, top = self.store.spread_since(key, ts, gap)
-            last = self.store.get(f"sp:alert:{key}")
-            if last and now - last["ts"] < 3600 and best["gross_pct"] < last["pct"] * 1.3:
+        order = sorted(cands, key=lambda c: -(abs(c[2]["gross_pct"]) if c[2] else 0.5))
+        for kind, base, pair, cheap, dear, idx in order:
+            if kind == "index":
+                sig = sorted(f.split(":")[0] for f in idx["flags"])
+                last = self.store.get(f"ix:alert:{base}")
+                if last and now - last["ts"] < 2 * 3600 and last["sig"] == sig:
+                    continue
+                self.store.put(f"ix:alert:{base}", {"ts": now, "sig": sig})
+                alerts.append(Alert("spreads", base, "index", fmt.index_alert(base, idx), {"type": "index", **idx}, 0.5))
                 continue
-            buy, sell = best["buy"], best["sell"]
-            s = {"buy": buy["venue"], "sell": sell["venue"], "buy_price": buy["price"], "sell_price": sell["price"],
-                 "gross_pct": best["gross_pct"], "route": route, "vols": [buy.get("vol24_usd"), sell.get("vol24_usd")],
-                 "held_min": round((ts - start) / 60) if start else 0, "max_pct": top,
-                 "dex_url": (buy if buy["kind"] == "dex" else sell).get("url") if "dex" in (buy["kind"], sell["kind"]) else None}
-            if buy["kind"] != "dex" and sell["kind"] != "dex" and len(alerts) < 5:
+            key = f"{kind}|{base}|{cheap['venue']}|{dear['venue']}"
+            last = self.store.get(f"sp:alert:{key}")
+            g = abs(pair["gross_pct"])
+            if last and now - last["ts"] < 3600 and g < last["pct"] * 1.3:
+                continue
+            start, top = self.store.spread_since(key, ts, gap)
+            s = {"type": kind, "pair": pair, "held_min": round((ts - start) / 60) if start else 0, "max_pct": top,
+                 "context": spreads.spot_context(trows, base, pair["spot"]) if kind == "spot_perp" else None,
+                 "index_flags": idx["flags"]}
+            if "dex" not in (cheap["kind"], dear["kind"]):
                 try:
-                    (asks, _), (_, bids) = await asyncio.gather(spreads._book(self.pool, buy), spreads._book(self.pool, sell))
+                    (asks, _), (_, bids) = await asyncio.gather(spreads._book(self.pool, cheap), spreads._book(self.pool, dear))
                     s["capacity"] = spreads.capacity(asks, bids, spreads.TAKER_FEE_PCT)
-                    if s["capacity"]["fits_usd"] < 200:
+                    if s["capacity"]["fits_usd"] < 300:
                         continue
                 except Exception:  # noqa: BLE001
                     pass
-            elif "dex" in (buy["kind"], sell["kind"]):
-                dex = buy if buy["kind"] == "dex" else sell
+            else:
+                dex = cheap if cheap["kind"] == "dex" else dear
                 s["capacity"] = {"fits_usd": round((dex.get("liquidity_usd") or 0) * 0.005)}
-            self.store.put(f"sp:alert:{key}", {"ts": now, "pct": best["gross_pct"]})
-            alerts.append(Alert("spreads", base, f"{buy['ex']}>{sell['ex']}", fmt.spread_alert(base, s), s,
-                                best["gross_pct"]))
-            if len(alerts) >= self.cfg.max_posts_per_cycle:
+            self.store.put(f"sp:alert:{key}", {"ts": now, "pct": g})
+            data = {"type": kind, "gross_pct": pair["gross_pct"], "carry_8h_pct": pair.get("carry_8h_pct"),
+                    "cheap": cheap["venue"], "dear": dear["venue"], "held_min": s["held_min"], "max_pct": top,
+                    "capacity": s.get("capacity"), "context": s["context"], "index_flags": idx["flags"]}
+            alerts.append(Alert("spreads", base, f"{cheap['ex']}>{dear['ex']}", fmt.spread_alert(base, s), data, g))
+            if len(alerts) >= cfg.max_posts_per_cycle:
                 break
         return alerts
 
@@ -356,10 +380,11 @@ class SpreadScanner(Scanner):
 # -------------------------------------------------------------------- transfers
 
 
-class TransferScanner(Scanner):
-    """Deposits/withdrawals opened or closed on any network (first run only records the baseline)."""
+class StatusScanner(Scanner):
+    """Deposit/withdrawal status per network (used by spreads and Bottom); posts open/close changes only
+    when SIG_STATUS_ALERTS=true. The first run only records the baseline."""
 
-    feed, every_attr = "transfers", "transfers_every"
+    feed, every_attr = "status", "transfers_every"
 
     async def scan(self) -> list[Alert]:
         rows, errors = await transfers.all_statuses(force=True)
@@ -388,12 +413,236 @@ class TransferScanner(Scanner):
                 if now_v is None or old_v is None or bool(now_v) == bool(old_v):
                     continue
                 changes.setdefault((r["ex"], r["base"]), []).append((r["chain"], what, bool(now_v)))
-        alerts = [Alert("transfers", base, ex, fmt.transfer_alert(ex, base, ch),
+        if not self.cfg.status_alerts:
+            return []
+        alerts = [Alert("status", base, ex, fmt.transfer_alert(ex, base, ch),
                         {"changes": [{"chain": c, "what": w, "opened": o} for c, w, o in ch]},
                         sum(1 for *_, o in ch if o))
                   for (ex, base), ch in changes.items()]
         alerts.sort(key=lambda a: -a.priority)
         return alerts[: self.cfg.max_posts_per_cycle * 2]
+
+
+# ------------------------------------------------------------------------ flows
+
+
+class FlowScanner(Scanner):
+    """Token deposits to and withdrawals from exchanges, on-chain, with wallets (like an on-chain desk)."""
+
+    feed, every_attr = "flows", "flows_every"
+
+    def __init__(self, cfg, store):
+        super().__init__(cfg, store)
+        self.book = cf.WalletBook(store)
+        self.rpc = cf.Rpc()
+
+    async def _prices(self) -> dict:
+        px = self.store.get("px", {}) or {}
+        if time.time() - px.get("_ts", 0) < 300:
+            return px
+        rows, _ = await feeds.snapshot(None, ("spot", "perp"))
+        by: dict[str, list] = {}
+        for r in rows:
+            by.setdefault(r["base"], []).append(r["price"])
+        from statistics import median
+        px = {b: median(v) for b, v in by.items()}
+        if px:
+            px["_ts"] = time.time()
+            self.store.put("px", px)
+        return px
+
+    async def _tokens(self, px: dict, stats: dict) -> dict[str, dict[str, str]]:
+        """chain → {contract: base} for liquid non-stable coins listed on exchanges."""
+        trows, _ = await transfers.all_statuses()
+        out: dict[str, dict[str, str]] = {}
+        for r in trows:
+            ch = r["chain"]
+            if ch not in cf.EVM_RPC and ch not in ("TRX", "SOL"):
+                continue
+            if ch not in self.cfg.flow_chains or not r["contract"] or r["base"] in cf.STABLES or r["base"] not in px:
+                continue
+            c = r["contract"].lower() if r["contract"].startswith("0x") else r["contract"]
+            out.setdefault(ch, {})[c] = r["base"]
+        for ch, toks in out.items():  # keep the most traded
+            if len(toks) > self.cfg.flows_max_tokens:
+                keep = sorted(toks.items(), key=lambda kv: -((stats.get(kv[1]) or [0, 0])[1]))[: self.cfg.flows_max_tokens]
+                out[ch] = dict(keep)
+        return out
+
+    async def _decimals(self, chain: str, token: str) -> int | None:
+        k = f"dec:{chain}:{token}"
+        d = self.store.get(k)
+        if d is None:
+            try:
+                d = await self.rpc.decimals(chain, token)
+            except Exception:  # noqa: BLE001
+                return None
+            self.store.put(k, d)
+        return d
+
+    async def _evm(self, chain: str, toks: dict[str, str]) -> list[dict]:
+        try:
+            latest = await self.rpc.block(chain)
+        except Exception as e:  # noqa: BLE001
+            log.info("%s block failed: %s", chain, e)
+            return []
+        step = cf.MAX_BLOCKS[chain]
+        cur = self.store.get(f"flows:cursor:{chain}") or latest - step
+        if latest - cur > step * self.cfg.flows_calls_per_chain * 4:
+            cur = latest - step * self.cfg.flows_calls_per_chain  # too far behind: stay real-time
+        out, calls = [], 0
+        contracts = sorted(toks)
+        while cur < latest and calls < self.cfg.flows_calls_per_chain:
+            to = min(latest, cur + step)
+            try:
+                logs = await self.rpc.logs(chain, contracts, cur + 1, to)
+            except Exception as e:  # noqa: BLE001
+                if step > 1 and any(k in str(e).lower() for k in ("range", "limit", "too many", "exceed", "large")):
+                    step = max(1, step // 2)
+                    continue
+                log.info("%s getLogs failed: %s", chain, e)
+                break
+            for lg in logs:
+                e = cf.parse_log(lg)
+                if e and e["token"] in toks:
+                    e.update(chain=chain, base=toks[e["token"]], ts=time.time())
+                    out.append(e)
+            cur, calls = to, calls + 1
+        self.store.put(f"flows:cursor:{chain}", cur)
+        return out
+
+    async def _tron(self, toks: dict[str, str]) -> list[dict]:
+        wallets = sorted(a for a, _ in self.book.all_owned("tron"))
+        if not wallets:
+            return []
+        i = self.store.get("flows:tron:i", 0) % len(wallets)
+        batch = (wallets[i:] + wallets[:i])[: self.cfg.tron_wallets_per_cycle]
+        self.store.put("flows:tron:i", i + len(batch))
+        out = []
+        for w in batch:
+            since = self.store.get(f"flows:tron:{w}") or int((time.time() - 900) * 1000)
+            try:
+                rows = await cf.tron_transfers(w, since, os.getenv("TRONGRID_API_KEY", ""))
+            except Exception as e:  # noqa: BLE001
+                log.info("trongrid %s failed: %s", w, e)
+                continue
+            for x in rows:
+                base = toks.get(x["token"]) if x.get("token") else None
+                if base:
+                    out.append(x | {"chain": "TRX", "base": base, "ts": (x.get("ts") or 0) / 1000 or time.time()})
+                since = max(since, (x.get("ts") or 0) + 1)
+            self.store.put(f"flows:tron:{w}", since)
+        return out
+
+    async def _solana(self, toks: dict[str, str]) -> list[dict]:
+        key = os.getenv("HELIUS_API_KEY", "")
+        wallets = sorted(a for a, _ in self.book.all_owned("solana"))
+        if not key or not wallets:
+            return []
+        i = self.store.get("flows:sol:i", 0) % len(wallets)
+        batch = (wallets[i:] + wallets[:i])[: self.cfg.tron_wallets_per_cycle]
+        self.store.put("flows:sol:i", i + len(batch))
+        out = []
+        for w in batch:
+            seen = set(self.store.get(f"flows:sol:{w}") or [])
+            try:
+                rows = await cf.solana_transfers(w, key)
+            except Exception as e:  # noqa: BLE001
+                log.info("helius %s failed: %s", w, e)
+                continue
+            for x in rows:
+                if x["tx"] in seen or not toks.get(x["token"]):
+                    continue
+                out.append(x | {"chain": "SOL", "base": toks[x["token"]], "ts": (x.get("ts") or 0) / 1000 or time.time()})
+            self.store.put(f"flows:sol:{w}", sorted({x["tx"] for x in rows})[-200:])
+        return out
+
+    async def scan(self) -> list[Alert]:
+        if not self.store.get("por:ts") or time.time() - self.store.get("por:ts") > 86400:
+            try:
+                n = await self.book.add_binance_por()
+                log.info("binance proof-of-reserves: +%d wallets", n)
+            except Exception as e:  # noqa: BLE001
+                log.info("binance PoR failed: %s", e)
+            self.store.put("por:ts", time.time())
+        px = await self._prices()
+        if not px:
+            log.info("flows: no prices (exchanges unreachable)")
+            return []
+        stats = await ensure_stats(self.store)
+        toks = await self._tokens(px, stats)
+        events: list[dict] = []
+        for ch in self.cfg.flow_chains:
+            if ch in cf.EVM_RPC and toks.get(ch):
+                events += await self._evm(ch, toks[ch])
+        if "TRX" in self.cfg.flow_chains and toks.get("TRX"):
+            events += await self._tron(toks["TRX"])
+        if "SOL" in self.cfg.flow_chains and toks.get("SOL"):
+            events += await self._solana(toks["SOL"])
+        cands = []
+        for e in events:
+            fam = cf.family(e["chain"])
+            cls = cf.classify(self.book, fam, e["from"], e["to"])
+            if not cls or cls["kind"] == "sweep":
+                continue
+            if "amount" not in e:
+                dec = await self._decimals(e["chain"], e["token"])
+                if dec is None:
+                    continue
+                e["amount"] = e["raw"] / 10 ** dec
+            usd = e["amount"] * px.get(e["base"], 0)
+            if usd < self.cfg.flow_store_usd:
+                continue
+            f = {"ts": e["ts"], "chain": e["chain"], "base": e["base"], "token": e["token"], "kind": cls["kind"],
+                 "exchange": cls["exchange"], "frm": e["from"], "to": e["to"], "amount": e["amount"], "usd": usd,
+                 "tx": e["tx"]}
+            if self.store.add_flow(f) and usd >= self.cfg.flow_min_usd:
+                cands.append(f | {"cls": cls})
+        cands.sort(key=lambda f: -f["usd"])
+        alerts = []
+        for f in cands[: self.cfg.max_posts_per_cycle]:
+            x = await self._enrich(f, px, stats)
+            alerts.append(Alert("flows", f["base"], f["exchange"], fmt.flow_alert(f, x, self.book),
+                                {k: v for k, v in f.items() if k != "cls"} | x, f["usd"]))
+        return alerts
+
+    async def _enrich(self, f: dict, px: dict, stats: dict) -> dict:
+        x: dict = {}
+        st = stats.get(f["base"])
+        if st:
+            x["mcap"], x["vol24"] = st
+            x["pct_mcap"] = round(f["usd"] / st[0] * 100, 2) if st[0] else None
+            x["pct_vol"] = round(f["usd"] / st[1] * 100, 2) if st[1] else None
+        x["whale"] = f["usd"] >= self.cfg.flow_whale_usd or (x.get("pct_vol") or 0) >= 5
+        evm = f["chain"] in cf.EVM_RPC
+        who = f["frm"] if f["kind"] == "deposit" else f["to"]
+        if evm:
+            try:
+                left = await self.rpc.balance_of(f["chain"], f["token"], who)
+                dec = await self._decimals(f["chain"], f["token"]) or 0
+                x["wallet_left"] = left / 10 ** dec
+                x["wallet_left_usd"] = x["wallet_left"] * px.get(f["base"], 0)
+                if f["kind"] == "withdrawal":
+                    nat = await self.rpc.native_balance(f["chain"], who) / 1e18
+                    x["native"] = nat
+                    x["native_usd"] = nat * px.get(cf.NATIVE[f["chain"]], 0)
+            except Exception:  # noqa: BLE001
+                pass
+        series = self.store.flows(base=f["base"], days=self.cfg.flows_series_days, kind=f["kind"])
+        if series:
+            wallets: dict[str, float] = {}
+            exs: dict[str, float] = {}
+            for r in series:
+                w = r["frm"] if f["kind"] == "deposit" else r["to"]
+                wallets[w] = wallets.get(w, 0) + r["usd"]
+                exs[r["exchange"]] = exs.get(r["exchange"], 0) + r["usd"]
+            x["series"] = {"since": series[0]["ts"], "usd": sum(r["usd"] for r in series), "n": len(series),
+                           "wallets": sorted(wallets.items(), key=lambda kv: -kv[1]),
+                           "exchanges": sorted(exs.items(), key=lambda kv: -kv[1])}
+        if f["kind"] == "withdrawal":
+            mine = [r for r in series if r["to"] == f["to"]]
+            x["receiver"] = {"n": len(mine), "usd": sum(r["usd"] for r in mine)}
+        return x
 
 
 # -------------------------------------------------------------------------- DEX
@@ -443,4 +692,4 @@ class DexScanner(Scanner):
 
 
 SCANNERS = {"oi": OIScanner, "funding": FundingScanner, "spreads": SpreadScanner,
-            "transfers": TransferScanner, "dex": DexScanner}
+            "flows": FlowScanner, "dex": DexScanner, "status": StatusScanner}

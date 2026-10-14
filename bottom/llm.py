@@ -272,6 +272,10 @@ class FailoverBackend:
 
 
 def _single(cfg: LLMConfig):
+    if cfg.provider == "claude_code":
+        from .claude_code import ClaudeCodeBackend
+
+        return ClaudeCodeBackend(cfg.model)
     return AnthropicBackend(cfg) if cfg.provider == "anthropic" else OpenAICompatBackend(cfg)
 
 

@@ -109,6 +109,15 @@ class Toolbox:
         return calc_setup(self.s.risk, symbol, direction, float(entry_low), float(stop),
                           [float(t) for t in targets], float(entry_high) if entry_high else None, atr_pct)
 
+    def _flows(self, base: str, days: int) -> dict:
+        path = os.getenv("SIGNALS_DB", "data/signals.db")
+        if not os.path.exists(path):
+            return {"error": "сканер flows не запущен (нет базы сигналов)"}
+        from ..signals.store import SignalStore
+        from .chainflows import flows_summary
+
+        return flows_summary(SignalStore(path), base, days)
+
     # ---- registration ---------------------------------------------------------
 
     def _add(self, name, description, props, required, label, run):
@@ -181,10 +190,10 @@ class Toolbox:
         )
         self._add(
             "spread_check",
-            "Реальный спред монеты: все биржи (спот и перп) и DEX-пулы её настоящего контракта; лучшая пара "
-            "купить/продать, маршрут перевода (вывод и депозит открыты на общей сети, тот же контракт), сколько "
-            "спред держится по истории 5м, сужается ли, сколько помещается в стаканы после комиссий, вердикт "
-            "входить или нет. Перп-перп спред — отдельно. Только когда спрашивают про спред/арбитраж.",
+            "Спреды монеты без переводов между биржами: фьюч↔фьюч по всем биржам (с переносом фандинга) и "
+            "спот↔фьюч (спот CEX и DEX-пулы настоящего контракта против перпов), проверка индексов (перп к своему "
+            "индексу, марк к индексу, индексы бирж между собой и к споту); сколько спред держится по истории 5м, "
+            "сужается ли, сколько помещается в стаканы, вердикт. Только когда спрашивают про спред/арбитраж/индекс.",
             {"symbol": SYM, "hours": {"type": "integer", "description": "Окно истории спреда, ч (по умолчанию 6)"}},
             ["symbol"], "🔀 Проверяю спред",
             lambda symbol, hours=6: spreads.spread_check(self.pool, symbol, max(1, min(int(hours), 24))),
@@ -208,15 +217,23 @@ class Toolbox:
         self._add(
             "signals",
             "Алерты НАШИХ сканеров (группа сигналов): oi — всплески OI, funding — экстремальный фандинг и "
-            "скачки, spreads — спреды с проверкой маршрута, transfers — открытие/закрытие депозитов и выводов, "
-            "dex — сливы китов в пулы. Без тикера — какие монеты чаще всего в сигналах; с тикером — история по "
+            "скачки, spreads — спреды фьюч↔фьюч, спот↔фьюч и проверка индексов, flows — ончейн заводы на биржи и "
+            "выводы с бирж (кошельки), dex — очень сильные сливы в пулы, status — открытие/закрытие сетей. Без тикера — какие монеты чаще всего в сигналах; с тикером — история по "
             "монете. Основа для «что сейчас интересного / лучший сетап».",
-            {"feed": {"type": "string", "enum": ["", "oi", "funding", "spreads", "transfers", "dex"]},
+            {"feed": {"type": "string", "enum": ["", "oi", "funding", "spreads", "flows", "dex", "status"]},
              "symbol": {"type": "string", "description": "Тикер; пусто — обзор"},
              "hours": {"type": "integer", "description": "За сколько часов (по умолчанию 24)"}},
             [], "📡 Смотрю наши сигналы",
             lambda feed="", symbol="", hours=24: asyncio.to_thread(
                 read_signals, signals_db, feed, symbol, max(1, min(int(hours), 720))),
+        )
+        self._add(
+            "exchange_flows",
+            "Ончейн-переводы монеты на биржи и с бирж (по кошелькам бирж): сколько завели/вывели и куда, нетто, "
+            "кто больше всех заводит, крупнейшие переводы. Нужен запущенный сканер flows.",
+            {"symbol": SYM, "days": {"type": "integer", "description": "За сколько дней (по умолчанию 30)"}},
+            ["symbol"], "🏦 Смотрю заводы и выводы",
+            lambda symbol, days=30: asyncio.to_thread(self._flows, exch.normalize_base(symbol), max(1, min(int(days), 90))),
         )
         self._add(
             "token_fundamentals",

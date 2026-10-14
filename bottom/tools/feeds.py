@@ -68,7 +68,7 @@ def base_of(symbol: str, quote: str = "USDT") -> tuple[str, int] | None:
 
 
 def _row(ex, kind, symbol, price, *, oi_usd=None, funding=None, interval_h=None, next_ms=None, vol=None,
-         quote="USDT"):
+         mark=None, index=None, quote="USDT"):
     bm = base_of(symbol, quote)
     p = _f(price)
     if not bm or not p:
@@ -79,6 +79,7 @@ def _row(ex, kind, symbol, price, *, oi_usd=None, funding=None, interval_h=None,
         "ex": ex, "kind": kind, "base": base, "symbol": symbol, "price": p / mult,
         "oi_usd": _f(oi_usd), "funding_pct": round(fr * 100, 5) if fr is not None else None,
         "interval_h": interval_h, "next_funding_ms": int(next_ms) if next_ms else None, "vol24_usd": _f(vol),
+        "mark": _f(mark) / mult if _f(mark) else None, "index": _f(index) / mult if _f(index) else None,
     }
 
 
@@ -98,7 +99,8 @@ async def binance_perp() -> list[dict]:
     for p in prem:
         s = p["symbol"]
         r = _row("binance", "perp", s, last.get(s) or p.get("markPrice"), funding=p.get("lastFundingRate"),
-                 interval_h=ivl.get(s, 8), next_ms=p.get("nextFundingTime"), vol=vol.get(s))
+                 interval_h=ivl.get(s, 8), next_ms=p.get("nextFundingTime"), vol=vol.get(s),
+                 mark=p.get("markPrice"), index=p.get("indexPrice"))
         if r:
             out.append(r)
     return out  # Binance has no bulk OI; per-coin OI comes from oi_card
@@ -115,7 +117,8 @@ async def bybit_perp() -> list[dict]:
     for t in (data.get("result") or {}).get("list") or []:
         r = _row("bybit", "perp", t["symbol"], t.get("lastPrice"), oi_usd=t.get("openInterestValue"),
                  funding=t.get("fundingRate") or None, interval_h=_f(t.get("fundingIntervalHour")) or 8,
-                 next_ms=t.get("nextFundingTime") or None, vol=t.get("turnover24h"))
+                 next_ms=t.get("nextFundingTime") or None, vol=t.get("turnover24h"),
+                 mark=t.get("markPrice"), index=t.get("indexPrice"))
         if r:
             out.append(r)
     return out
@@ -128,12 +131,16 @@ async def bybit_spot() -> list[dict]:
 
 
 async def okx_perp() -> list[dict]:
-    tick, oi, fr = await asyncio.gather(
+    tick, oi, fr, mk, ix = await asyncio.gather(
         http.get_json(f"{OKX}/api/v5/market/tickers", {"instType": "SWAP"}),
         http.get_json(f"{OKX}/api/v5/public/open-interest", {"instType": "SWAP"}),
         http.get_json(f"{OKX}/api/v5/public/funding-rate", {"instId": "ANY"}),
+        http.get_json(f"{OKX}/api/v5/public/mark-price", {"instType": "SWAP"}),
+        http.get_json(f"{OKX}/api/v5/market/index-tickers", {"quoteCcy": "USDT"}),
         return_exceptions=True,
     )
+    marks = {m["instId"]: m.get("markPx") for m in mk.get("data", [])} if isinstance(mk, dict) else {}
+    idx = {i["instId"]: i.get("idxPx") for i in ix.get("data", [])} if isinstance(ix, dict) else {}
     if isinstance(tick, Exception):
         raise tick
     oi_usd = {o["instId"]: o.get("oiUsd") for o in oi.get("data", [])} if isinstance(oi, dict) else {}
@@ -147,7 +154,7 @@ async def okx_perp() -> list[dict]:
         vol = (_f(t.get("volCcy24h")) or 0) * (last or 0) or None
         r = _row("okx", "perp", s, t.get("last"), oi_usd=oi_usd.get(s), funding=f.get("fundingRate"),
                  interval_h=round((nxt - cur) / 3.6e6, 2) if nxt and cur else None, next_ms=f.get("fundingTime"),
-                 vol=vol)
+                 vol=vol, mark=marks.get(s), index=idx.get(s.replace("-SWAP", "")))
         if r:
             out.append(r)
     return out
@@ -165,7 +172,8 @@ async def bitget_perp() -> list[dict]:
         price = _f(t.get("lastPr"))
         hold = _f(t.get("holdingAmount"))
         r = _row("bitget", "perp", t["symbol"], price, oi_usd=hold * price if hold and price else None,
-                 funding=t.get("fundingRate"), interval_h=8, vol=t.get("usdtVolume") or t.get("quoteVolume"))
+                 funding=t.get("fundingRate"), interval_h=8, vol=t.get("usdtVolume") or t.get("quoteVolume"),
+                 mark=t.get("markPrice"), index=t.get("indexPrice"))
         if r:
             out.append(r)
     return out
@@ -193,7 +201,8 @@ async def gate_perp() -> list[dict]:
         nxt = _f(c.get("funding_next_apply"))
         r = _row("gate", "perp", c["name"], price, oi_usd=size * mult * price if size and mult and price else None,
                  funding=c.get("funding_rate"), interval_h=(_f(c.get("funding_interval")) or 28800) / 3600,
-                 next_ms=nxt * 1000 if nxt else None, vol=vol.get(c["name"]))
+                 next_ms=nxt * 1000 if nxt else None, vol=vol.get(c["name"]),
+                 mark=c.get("mark_price"), index=c.get("index_price"))
         if r:
             out.append(r)
     return out
@@ -217,7 +226,7 @@ async def mexc_perp() -> list[dict]:
     for t in tick.get("data") or []:
         price, hold, cs = _f(t.get("lastPrice")), _f(t.get("holdVol")), size.get(t["symbol"])
         r = _row("mexc", "perp", t["symbol"], price, oi_usd=hold * cs * price if hold and cs and price else None,
-                 funding=t.get("fundingRate"), vol=t.get("amount24"))
+                 funding=t.get("fundingRate"), vol=t.get("amount24"), mark=t.get("fairPrice"), index=t.get("indexPrice"))
         if r:
             out.append(r)
     return out
@@ -237,7 +246,8 @@ async def kucoin_perp() -> list[dict]:
         gran, till = _f(c.get("fundingRateGranularity")), _f(c.get("nextFundingRateTime"))
         r = _row("kucoin", "perp", c["symbol"], price, oi_usd=oi * mult * price if oi and mult and price else None,
                  funding=c.get("fundingFeeRate"), interval_h=gran / 3.6e6 if gran else None,
-                 next_ms=now + till if till else None, vol=c.get("turnoverOf24h"))
+                 next_ms=now + till if till else None, vol=c.get("turnoverOf24h"),
+                 mark=c.get("markPrice"), index=c.get("indexPrice"))
         if r:
             out.append(r)
     return out
@@ -262,7 +272,8 @@ async def bingx_perp() -> list[dict]:
     for p in prem.get("data") or []:
         t = tk.get(p["symbol"], {})
         r = _row("bingx", "perp", p["symbol"], t.get("lastPrice") or p.get("markPrice"),
-                 funding=p.get("lastFundingRate"), next_ms=p.get("nextFundingTime"), vol=t.get("quoteVolume"))
+                 funding=p.get("lastFundingRate"), next_ms=p.get("nextFundingTime"), vol=t.get("quoteVolume"),
+                 mark=p.get("markPrice"), index=p.get("indexPrice"))
         if r:
             out.append(r)
     return out
@@ -283,6 +294,7 @@ async def hyperliquid_perp() -> list[dict]:
             "oi_usd": oi * price if oi else None,
             "funding_pct": round(_f(c.get("funding")) * 100, 5) if c.get("funding") is not None else None,
             "interval_h": 1, "next_funding_ms": None, "vol24_usd": _f(c.get("dayNtlVlm")),
+            "mark": price / mult, "index": (_f(c.get("oraclePx")) or 0) / mult or None,
         })
     return out
 
@@ -311,4 +323,18 @@ async def snapshot(exchanges: list[str] | None = None, kinds: tuple[str, ...] = 
             log.info("feed %s %s failed: %s", ex, kind, r)
         else:
             rows.extend(r)
+    return rows, errors
+
+
+_snap_cache: dict = {}
+
+
+async def cached_snapshot(kinds: tuple[str, ...] = ("perp", "spot"), ttl: float = 60) -> tuple[list[dict], dict]:
+    """Snapshot shared by on-demand tools (one bulk pull per minute, not per question)."""
+    hit = _snap_cache.get(kinds)
+    if hit and time.time() - hit[0] < ttl:
+        return hit[1], hit[2]
+    rows, errors = await snapshot(None, kinds)
+    if rows:
+        _snap_cache[kinds] = (time.time(), rows, errors)
     return rows, errors

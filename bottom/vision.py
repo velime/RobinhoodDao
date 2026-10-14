@@ -114,5 +114,9 @@ async def _call(cfg: LLMConfig, data: bytes, mime: str, prompt: str) -> str:
     return resp.choices[0].message.content or ""
 
 
-def make_vision(s: Settings) -> Vision:
+def make_vision(s: Settings):
+    if s.vision_llm is None and s.llm.provider == "claude_code":
+        from .claude_code import FileVision  # Claude Code opens the picture itself
+
+        return FileVision()
     return Vision(s.vision_llm or s.llm, s.llm_fallback, s.vision_daily_limit)

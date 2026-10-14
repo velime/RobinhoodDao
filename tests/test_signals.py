@@ -96,27 +96,46 @@ async def test_public_transfer_lists(monkeypatch):
     assert (g["deposit"], g["withdraw"]) == (False, True)
 
 
-def test_spread_pairs_persistence_capacity_verdict():
-    vs = [{"venue": "mexc spot", "ex": "mexc", "kind": "spot", "price": 1.00, "vol24_usd": 50000},
-          {"venue": "gate spot", "ex": "gate", "kind": "spot", "price": 1.06, "vol24_usd": 80000},
-          {"venue": "dead spot", "ex": "x", "kind": "spot", "price": 2.0, "vol24_usd": 10},
-          {"venue": "bybit perp", "ex": "bybit", "kind": "perp", "price": 1.01, "vol24_usd": 1e6},
-          {"venue": "okx perp", "ex": "okx", "kind": "perp", "price": 1.03, "vol24_usd": 1e6}]
-    p = spreads.pairs(vs)
-    assert p["transfer"]["buy"]["venue"] == "mexc spot" and p["transfer"]["gross_pct"] == 6.0
-    assert p["perp"]["gross_pct"] == pytest.approx(1.98)
+def _v(venue, kind, price, vol=1e6, f8=None, index=None, mark=None, ex=None):
+    return {"venue": venue, "ex": ex or venue.split()[0].lower(), "kind": kind, "price": price, "vol24_usd": vol,
+            "funding_8h": f8, "index": index, "mark": mark}
+
+
+def test_perp_and_spot_perp_pairs_and_index():
+    vs = [_v("Gate фьюч", "perp", 1.00, f8=-0.05, index=1.0, mark=1.0),
+          _v("MEXC фьюч", "perp", 1.024, f8=0.30, index=1.0, mark=1.024),
+          _v("Bybit фьюч", "perp", 1.01, f8=0.01, index=0.95, mark=1.01),
+          _v("Dead фьюч", "perp", 2.0, vol=10),
+          _v("Binance спот", "spot", 1.00), _v("DEX bsc", "dex", 0.97)]
+    pp = spreads.perp_pair(vs)
+    assert pp["long"]["venue"] == "Gate фьюч" and pp["short"]["venue"] == "MEXC фьюч" and pp["gross_pct"] == 2.4
+    assert pp["carry_8h_pct"] == 0.35
+    sp = spreads.spot_perp_pair(vs)
+    assert sp["spot"]["venue"] == "DEX bsc" and sp["perp"]["venue"] == "MEXC фьюч" and sp["gross_pct"] == 5.57
+    assert sp["scheme"].startswith("купить спот") and sp["carry_8h_pct"] == 0.30
+    ix = spreads.index_checks(vs)
+    assert any(f.startswith("MEXC фьюч: перп +2.40%") for f in ix["flags"])
+    assert any("Bybit фьюч: индекс -5.00%" in f for f in ix["flags"])
+    assert any("марк" in f and "MEXC" in f for f in ix["flags"])
+    assert not any(v["kind"] == "spot" for v in (pp["long"], pp["short"]))  # no spot↔spot anywhere
+
+
+def test_spread_persistence_capacity_verdict():
     a = [(i * 300000, 1.0) for i in range(24)]
-    b = [(i * 300000, 1.0 if i < 20 else 1.06) for i in range(24)]
-    h = spreads.persistence(a, b, 6.0)
+    b = [(i * 300000, 1.0 if i < 20 else 1.03) for i in range(24)]
+    h = spreads.persistence(a, b, 3.0)
     assert h["held_minutes"] == 20 and not h["held_whole_window"]
-    cap = spreads.capacity([(1.0, 100), (1.02, 100)], [(1.06, 150), (1.0, 100)], 0.1)
+    cap = spreads.capacity([(1.0, 100), (1.02, 100)], [(1.06, 150), (1.0, 100)], 0.06)
     assert cap["fits_usd"] == round(100 * 1.0 + 50 * 1.02) and cap["profit_usd"] > 0
-    v = spreads.verdict(p["transfer"], {"status": "closed", "why": "mexc BSC: вывод закрыт"}, h, cap)
-    assert v["enter"] is False and any("перевод закрыт" in r for r in v["reasons"])
-    assert any("помещается только" in r for r in v["reasons"])  # ~$151 fits — too small
-    v = spreads.verdict(p["transfer"], {"status": "open", "fastest": "BSC", "transfer_minutes": 3}, h,
-                        {"fits_usd": 5000, "profit_usd": 150})
+    pair = {"gross_pct": 3.0, "net_pct": 2.76, "carry_8h_pct": -1.2}
+    v = spreads.verdict(pair, h, {"fits_usd": 5000, "profit_usd": 100})
+    assert v["enter"] is False and any("съест спред" in r for r in v["reasons"])
+    pair["carry_8h_pct"] = 0.1
+    v = spreads.verdict(pair, h, {"fits_usd": 5000, "profit_usd": 100})
     assert v["enter"] is True
+    assert spreads.verdict(pair, h, {"fits_usd": 151})["enter"] is False
+    trows = [_tr("mexc", "XYZ", "BSC", False, True), _tr("mexc", "XYZ", "ETH", False, True)]
+    assert "закрыты все депозиты" in spreads.spot_context(trows, "XYZ", {"ex": "mexc", "kind": "spot"})
 
 
 def test_onchain_helpers():
@@ -222,8 +241,8 @@ async def test_oi_scanner(tmp_path, monkeypatch):
     assert await s.scan() == []  # cooldown
 
 
-async def test_transfer_scanner(tmp_path, monkeypatch):
-    cfg = _cfg(tmp_path)
+async def test_status_scanner(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, status_alerts=True)
     store = SignalStore(cfg.db_path)
     state = [_tr("gate", "ABC", "BSC", False, True)]
 
@@ -235,7 +254,7 @@ async def test_transfer_scanner(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sc.transfers, "all_statuses", fake_all)
     monkeypatch.setattr(sc.feeds, "snapshot", snap)
-    s = sc.TransferScanner(cfg, store)
+    s = sc.StatusScanner(cfg, store)
     assert await s.scan() == []  # baseline
     state[0]["deposit"] = True
     a = await s.scan()
@@ -244,26 +263,29 @@ async def test_transfer_scanner(tmp_path, monkeypatch):
 
 
 async def test_spread_scanner(tmp_path, monkeypatch):
-    cfg = _cfg(tmp_path, spread_min_pct=3)
+    cfg = _cfg(tmp_path)
     store = SignalStore(cfg.db_path)
-    spot = [{"ex": "mexc", "kind": "spot", "base": "XYZ", "symbol": "XYZUSDT", "price": 1.0, "vol24_usd": 90000},
-            {"ex": "gate", "kind": "spot", "base": "XYZ", "symbol": "XYZ_USDT", "price": 1.05, "vol24_usd": 90000},
-            {"ex": "mexc", "kind": "spot", "base": "QQQ", "symbol": "QQQUSDT", "price": 1.0, "vol24_usd": 90000},
-            {"ex": "gate", "kind": "spot", "base": "QQQ", "symbol": "QQQ_USDT", "price": 1.2, "vol24_usd": 90000}]
-    trows = [_tr("mexc", "XYZ", "BSC", True, True), _tr("gate", "XYZ", "BSC", True, True),
-             _tr("mexc", "QQQ", "BSC", True, False), _tr("gate", "QQQ", "BSC", True, True)]
 
-    async def snap(exs=None, kinds=("spot",)):
-        return [dict(r) for r in spot], {}
+    def r(ex, kind, base, price, fr=None, index=None):
+        return {"ex": ex, "kind": kind, "base": base, "symbol": base + "USDT", "price": price, "vol24_usd": 9e5,
+                "funding_pct": fr, "interval_h": 8, "next_funding_ms": None, "oi_usd": None, "mark": price,
+                "index": index}
+
+    rows = [r("gate", "perp", "XYZ", 1.00, -0.01, 1.0), r("mexc", "perp", "XYZ", 1.02, 0.05, 1.0),
+            r("binance", "spot", "XYZ", 1.0), r("mexc", "spot", "XYZ", 1.10),  # spot↔spot 10% must be ignored
+            r("bybit", "perp", "BTC", 100.0, 0.01, 100.0), r("okx", "perp", "BTC", 100.01, 0.01, 100.0)]
+
+    async def snap(exs=None, kinds=("perp", "spot")):
+        return [dict(x) for x in rows], {}
 
     async def fake_all(force=False):
-        return trows, {}
+        return [], {}
 
     async def no_dex(*a, **k):
         return None
 
     async def book(pool, v):
-        return ([(v["price"], 1000)], [(v["price"], 1000)])
+        return ([(v["price"], 5000)], [(v["price"], 5000)])
 
     monkeypatch.setattr(sc.feeds, "snapshot", snap)
     monkeypatch.setattr(sc.transfers, "all_statuses", fake_all)
@@ -274,8 +296,14 @@ async def test_spread_scanner(tmp_path, monkeypatch):
         a = await s.scan()
     finally:
         await s.close()
-    assert [x.base for x in a] == ["XYZ"]  # QQQ: withdraw closed → hidden
-    assert "✅ Маршрут: BSC" in a[0].text and a[0].data["capacity"]["fits_usd"] > 0
+    kinds = {(x.base, x.data["type"]) for x in a}
+    assert ("XYZ", "perp_perp") in kinds and ("XYZ", "spot_perp") in kinds and ("XYZ", "index") in kinds
+    assert not any(x.base == "BTC" for x in a)
+    pp = next(x for x in a if x.data["type"] == "perp_perp")
+    assert "фьюч↔фьюч 2.00%" in pp.text and "перенос: +0.0600% за 8ч в твою пользу" in pp.text
+    sp = next(x for x in a if x.data["type"] == "spot_perp")
+    assert sp.data["cheap"] == "Gate фьюч" and sp.data["dear"] == "MEXC спот" and sp.data["gross_pct"] == -9.09
+    assert "лонг фьюч + продать спот" in sp.text
 
 
 def test_store_and_reader(tmp_path):
@@ -301,3 +329,163 @@ async def test_poster_dry(tmp_path, capsys):
     assert p.dry and await p.send("oi", "hello") is None
     await p.close()
     assert "hello" in capsys.readouterr().out
+
+
+# ------------------------------------------------------------------ on-chain flows
+
+import gzip  # noqa: E402
+import json  # noqa: E402
+
+from bottom.tools import chainflows as cf  # noqa: E402
+
+HOT = "0x28c6c06298d514db089934071355e5743bf21d60"
+DEP = "0x8b9000000000000000000000000000000000abcd"
+USER = "0x00d0000000000000000000000000000000001234"
+OKX_HOT = "0xe7c0000000000000000000000000000000000001"
+MM = "0x7390000000000000000000000000000000000002"
+TOKEN = "0x1111111111111111111111111111111111111111"
+
+
+def _book(tmp_path, store=None):
+    p = tmp_path / "w.json.gz"
+    data = {"evm": {HOT: {"e": "Binance", "k": "exchange", "t": "hot"}, DEP: {"e": "Kraken", "k": "exchange", "t": "deposit"},
+                    OKX_HOT: {"e": "OKX", "k": "exchange", "t": "reserve"}, MM: {"e": "Flowdesk", "k": "mm", "t": "mm"}},
+            "tron": {}, "solana": {}}
+    with gzip.open(p, "wt", encoding="utf-8") as fh:
+        json.dump(data, fh)
+    return cf.WalletBook(store, str(p))
+
+
+def test_classify_and_learn(tmp_path):
+    store = SignalStore(str(tmp_path / "f.db"))
+    b = _book(tmp_path, store)
+    assert cf.classify(b, "evm", USER, DEP) == {"kind": "deposit", "exchange": "Kraken"}
+    assert cf.classify(b, "evm", HOT, USER) == {"kind": "withdrawal", "exchange": "Binance", "to_mm": None}
+    assert cf.classify(b, "evm", OKX_HOT, MM)["to_mm"] == "Flowdesk"
+    assert cf.classify(b, "evm", MM, DEP)["kind"] == "deposit"
+    assert cf.classify(b, "evm", HOT, DEP) == {"kind": "deposit", "exchange": "Kraken", "from_exchange": "Binance"}
+    newdep = "0x9990000000000000000000000000000000000009"
+    assert cf.classify(b, "evm", newdep, HOT) == {"kind": "sweep", "exchange": "Binance"}  # learned
+    assert cf.classify(b, "evm", USER, newdep) == {"kind": "deposit", "exchange": "Binance"}
+    assert cf.classify(b, "evm", newdep, HOT) is None  # now internal
+    assert _book(tmp_path, store).label("evm", newdep)["e"] == "Binance"  # persisted
+    assert b.describe("evm", DEP) == "Kraken Deposit (0x8b9)" and b.describe("evm", HOT).startswith("Binance · Hot Wallet")
+
+
+def test_parse_log():
+    lg = {"address": TOKEN.upper().replace("X", "x"), "topics": [cf.TRANSFER_TOPIC, "0x" + "0" * 24 + USER[2:],
+                                                               "0x" + "0" * 24 + DEP[2:]],
+          "data": hex(5 * 10**18), "transactionHash": "0xtx", "blockNumber": "0x10"}
+    e = cf.parse_log(lg)
+    assert e["from"] == USER and e["to"] == DEP and e["raw"] == 5 * 10**18 and e["block"] == 16
+    assert cf.parse_log({**lg, "topics": lg["topics"] + ["0x1"]}) is None
+
+
+class FakeRpc:
+    def __init__(self, logs):
+        self._logs = logs
+
+    async def block(self, chain):
+        return 1000
+
+    async def logs(self, chain, contracts, frm, to):
+        out, self._logs = self._logs, []
+        return out
+
+    async def decimals(self, chain, token):
+        return 18
+
+    async def balance_of(self, chain, token, addr):
+        return 0
+
+    async def native_balance(self, chain, addr):
+        return 2 * 10**18
+
+
+def _log(frm, to, amount):
+    return {"address": TOKEN, "topics": [cf.TRANSFER_TOPIC, "0x" + "0" * 24 + frm[2:], "0x" + "0" * 24 + to[2:]],
+            "data": hex(int(amount * 10**18)), "transactionHash": "0x" + str(abs(hash((frm, to, amount)))),
+            "blockNumber": "0x3e8"}
+
+
+async def test_flow_scanner(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, flow_chains=("ETH",))
+    store = SignalStore(cfg.db_path)
+    store.put("por:ts", time.time())
+    store.put("px", {"_ts": time.time(), "SYRUP": 0.2, "ETH": 3000})
+    store.put("cgstats", {"_ts": time.time(), "SYRUP": [250e6, 14e6]})
+
+    async def fake_all(force=False):
+        return [_tr("binance", "SYRUP", "ETH", True, True, TOKEN)], {}
+
+    monkeypatch.setattr(sc.transfers, "all_statuses", fake_all)
+    s = sc.FlowScanner(cfg, store)
+    s.book = _book(tmp_path, store)
+    s.rpc = FakeRpc([_log(USER, DEP, 6_000_000), _log(HOT, USER, 2_000_000), _log(USER, DEP, 100)])
+    a = await s.scan()
+    assert [x.data["kind"] for x in a] == ["deposit", "withdrawal"]
+    d = a[0]
+    assert d.data["usd"] == 1_200_000 and d.data["whale"] and d.data["pct_vol"] == round(1.2e6 / 14e6 * 100, 2)
+    assert "🔴 Deposit 🐋 | $SYRUP" in d.text and "Kraken Deposit (0x8b9)" in d.text and "завёл весь запас" in d.text
+    assert "от капы" in d.text and "etherscan.io/address/" in d.text
+    w = a[1]
+    assert "🟢 Withdrawal | $SYRUP" in w.text and "Binance · Hot Wallet" in w.text and "⛽ native: 2.0000 ETH" in w.text
+    assert len(store.flows(base="SYRUP")) == 2  # the $20 one is not stored
+    summ = cf.flows_summary(store, "syrup")
+    assert summ["deposits_usd"] == 1_200_000 and summ["withdrawals_usd"] == 400_000 and summ["read"].startswith("заводят")
+
+
+def test_build_wallets_helpers():
+    import importlib.util
+    import pathlib
+
+    spec = importlib.util.spec_from_file_location("bw", pathlib.Path(__file__).parent.parent / "scripts" / "build_wallets.py")
+    bw = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bw)
+    assert bw.entity_of("Binance: Hot Wallet 20") == ("Binance", "exchange")
+    assert bw.entity_of("Wintermute") == ("Wintermute", "mm")
+    assert bw.entity_of("Uniswap V3: Router") is None
+    assert bw.wtype("Bitget Dep: 0x000483C56FE", "exchange") == "deposit"
+    assert bw.wtype("Binance 14", "exchange") == "hot" and bw.wtype("Kraken: Cold Wallet", "exchange") == "cold"
+    assert bw.skip_tag("Bybit Exploiter 3") and not bw.skip_tag("Bybit: Hot Wallet 2")
+    assert bw.family("TK86Qm97uM848dMk8G7xNbJB7zG1uW3h1n") == "tron" and bw.family(HOT) == "evm"
+
+
+def test_wallet_book_shipped():
+    b = cf.WalletBook()
+    assert len(b.w["evm"]) > 10000 and b.label("evm", HOT)["e"] == "Binance"
+
+
+def test_mcp_server_roundtrip():
+    import io
+
+    from bottom.mcp_server import Server
+
+    class TB:
+        tools = {"echo": SimpleNamespaceTool()}
+
+        async def execute(self, name, args):
+            return json.dumps({"you_said": args.get("x")})
+
+    lines = [json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2099-01-01"}}),
+             json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+             json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+             json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "echo", "arguments": {"x": 5}}}),
+             json.dumps({"jsonrpc": "2.0", "id": 4, "method": "bogus"}), "not json"]
+    sent = []
+    srv = Server(TB())
+    srv.send = sent.append
+    import asyncio
+
+    asyncio.run(srv.serve(io.StringIO("\n".join(lines) + "\n")))
+    by = {m.get("id"): m for m in sent}
+    assert by[1]["result"]["protocolVersion"] == "2025-06-18"
+    assert by[2]["result"]["tools"][0]["name"] == "echo"
+    assert json.loads(by[3]["result"]["content"][0]["text"]) == {"you_said": 5}
+    assert by[4]["error"]["code"] == -32601 and by[None]["error"]["code"] == -32700
+
+
+class SimpleNamespaceTool:
+    name = "echo"
+    description = "echo"
+    parameters = {"type": "object", "properties": {"x": {"type": "integer"}}}

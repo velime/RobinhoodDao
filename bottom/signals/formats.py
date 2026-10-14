@@ -151,29 +151,63 @@ def settlement_alert(settle_ms: int, items: list[tuple[str, list[dict]]]) -> str
     return "\n".join(lines)
 
 
+def _f8(v: float | None) -> str:
+    return "n/a" if v is None else f"{v:+.4f}%/8ч"
+
+
 def spread_alert(base: str, s: dict) -> str:
-    route = s["route"]
-    ok = {"open": "✅", "closed": "❌", "unknown": "❔"}[route["status"]]
-    lines = [f"<b>{e(base)} ({s['gross_pct']:.1f}%)</b>", "",
-             f"{e(s['buy'])} ➡️ {e(s['sell'])}",
-             f"buy: {price(s['buy_price'])} | sell: {price(s['sell_price'])}"]
-    if s.get("vols"):
-        lines.append(f"объём 24ч: {money(s['vols'][0])} → {money(s['vols'][1])}")
-    if route["status"] == "open":
-        lines.append(f"{ok} Маршрут: {', '.join(route.get('networks') or [])} · перевод ~{route.get('transfer_minutes')} мин"
-                     + (f" · комиссия вывода {route['withdraw_fee']:g}" if route.get("withdraw_fee") else ""))
+    p = s["pair"]
+    if s["type"] == "perp_perp":
+        lo, hi = p["long"], p["short"]
+        lines = [f"🔀 <b>{e(base)} · фьюч↔фьюч {p['gross_pct']:.2f}%</b>", "",
+                 f"лонг {e(lo['venue'])} {price(lo['price'])} → шорт {e(hi['venue'])} {price(hi['price'])}",
+                 f"фандинг: {e(lo['venue'])} {_f8(lo.get('funding_8h'))} · {e(hi['venue'])} {_f8(hi.get('funding_8h'))}"]
+        if p.get("carry_8h_pct") is not None:
+            c = p["carry_8h_pct"]
+            lines.append(f"перенос: {c:+.4f}% за 8ч {'в твою пользу' if c >= 0 else 'против тебя'}")
+        idx = [f"{e(v['venue'])} {price(v['index'])}" for v in (lo, hi) if v.get("index")]
+        if idx:
+            lines.append("индекс: " + " · ".join(idx))
     else:
-        lines.append(f"{ok} Маршрут: {e(route.get('why') or route['status'])}")
-    if route.get("contract_mismatch"):
-        lines.append(f"⚠️ Разные контракты: {', '.join(route['contract_mismatch'])} — возможно другой токен")
-    if s.get("held_min") is not None:
-        lines.append(f"⌛️ Держится: {s['held_min']} мин" + (f" · макс {s['max_pct']:.1f}%" if s.get("max_pct") else ""))
+        sp, pe = p["spot"], p["perp"]
+        lines = [f"🔀 <b>{e(base)} · спот↔фьюч {p['gross_pct']:+.2f}%</b>", "",
+                 f"спот {e(sp['venue'])} {price(sp['price'])}"
+                 + (f" (ликв {money(sp.get('liquidity_usd'))})" if sp.get("liquidity_usd") else "")
+                 + f" · фьюч {e(pe['venue'])} {price(pe['price'])}",
+                 f"схема: {e(p['scheme'])}"]
+        if p.get("carry_8h_pct") is not None:
+            c = p["carry_8h_pct"]
+            lines.append(f"фандинг {e(pe['venue'])}: {_f8(pe.get('funding_8h'))} → "
+                         f"{'получаешь' if c >= 0 else 'платишь'} {abs(c):.4f}% за 8ч")
+        if pe.get("index"):
+            lines.append(f"индекс {e(pe['venue'])}: {price(pe['index'])}")
+        if sp.get("url"):
+            lines.append(f'<a href="{e(sp["url"])}">пул</a>')
+    if s.get("context"):
+        lines.append(f"⚠️ {e(s['context'])}")
+    if s.get("index_flags"):
+        lines.append("🧭 " + e("; ".join(s["index_flags"][:2])))
+    lines.append(f"⌛️ Держится: {s.get('held_min') or 0} мин" + (f" · макс {s['max_pct']:.2f}%" if s.get("max_pct") else ""))
     if s.get("capacity"):
-        lines.append(f"📦 Помещается: ~{money(s['capacity'].get('fits_usd'))}"
-                     + (f", прибыль ~{money(s['capacity'].get('profit_usd'))}" if s["capacity"].get("profit_usd") else ""))
-    if s.get("dex_url"):
-        lines.append(f'<a href="{e(s["dex_url"])}">пул</a>')
+        c = s["capacity"]
+        lines.append(f"📦 Помещается: ~{money(c.get('fits_usd'))}"
+                     + (f", прибыль ~{money(c.get('profit_usd'))}" if c.get("profit_usd") else ""))
     lines += ["", utc(), tags("SPREAD", base)]
+    return "\n".join(lines)
+
+
+def index_alert(base: str, idx: dict) -> str:
+    lines = [f"🧭 <b>{e(base)} · проверка индексов</b>", ""]
+    lines += [f"• {e(f)}" for f in idx["flags"][:6]]
+    lines.append("")
+    if idx.get("median_index"):
+        lines.append(f"медиана индексов: {price(idx['median_index'])}")
+    if idx.get("median_spot"):
+        lines.append(f"медиана спота: {price(idx['median_spot'])}")
+    for r in idx["per_exchange"][:8]:
+        if r.get("index"):
+            lines.append(f"{e(r['venue'])}: last {price(r['last'])} · mark {price(r.get('mark'))} · index {price(r['index'])}")
+    lines += ["", utc(), tags("INDEX", base)]
     return "\n".join(lines)
 
 
@@ -194,4 +228,54 @@ def dex_alert(base: str, pool: dict, s: dict) -> str:
     if pool.get("url"):
         lines.append(f'<a href="{e(pool["url"])}">пул</a>')
     lines += ["", utc(), tags("DEX", base)]
+    return "\n".join(lines)
+
+
+def _link(chain: str, addr: str, text: str) -> str:
+    from ..tools.chainflows import addr_url
+
+    return f'<a href="{e(addr_url(chain, addr))}">{e(text)}</a>'
+
+
+def flow_alert(f: dict, x: dict, book) -> str:
+    """Deposit / withdrawal card: amount, wallets, weight, series, receiver stats."""
+    from ..tools.chainflows import CHAIN_NAMES, NATIVE, family, short, tx_url
+
+    fam, ch, base = family(f["chain"]), f["chain"], f["base"]
+    dep = f["kind"] == "deposit"
+    head = ("🔴 Deposit" if dep else "🟢 Withdrawal") + (" 🐋" if x.get("whale") else "")
+    lines = [f"<b>{head} | ${e(base)}</b>", "", f"🪙 Объём: {num(f['amount'])} ({money(f['usd'])})"]
+    if dep and x.get("wallet_left") is not None:
+        left = x["wallet_left"]
+        lines.append("👛 Остаток: 0 · завёл весь запас" if left <= f["amount"] * 0.01
+                     else f"👛 Остаток: {num(left)} ({money(x.get('wallet_left_usd'))})")
+    lines += ["", f"⬇️ From: {_link(ch, f['frm'], book.describe(fam, f['frm']))}",
+              f"⏺️ To: {_link(ch, f['to'], book.describe(fam, f['to']))}",
+              f"🔗 Network: {CHAIN_NAMES.get(ch, ch)}"]
+    if x.get("pct_vol") is not None or x.get("pct_mcap") is not None:
+        lines += ["", "📉 Вес:"]
+        if x.get("pct_vol") is not None:
+            lines.append(f"{x['pct_vol']:.2f}% от суточного объёма")
+        if x.get("pct_mcap") is not None:
+            lines.append(f"{x['pct_mcap']:.2f}% от капы ({money(x.get('mcap'))})")
+    srs = x.get("series")
+    if srs and srs["n"] > 1:
+        since = time.strftime("%d.%m", time.gmtime(srs["since"]))
+        lines += ["", f"🔁 {'Серия заводов' if dep else 'Отток'} с {since}: {money(srs['usd'])} ({srs['n']} транз)"]
+        if not dep and len(srs["exchanges"]) > 1:
+            lines.append("   • " + " · ".join(f"{e(k)} {money(v)}" for k, v in srs["exchanges"][:4]))
+        for w, u in srs["wallets"][:3]:
+            lines.append(f"{_link(ch, w, short(w))} {money(u)}")
+        if len(srs["wallets"]) > 3:
+            lines.append(f"и ещё {len(srs['wallets']) - 3} кошельков")
+    if not dep:
+        r = x.get("receiver") or {}
+        lines += ["", f"💸 Этот получатель: {_link(ch, f['to'], short(f['to']))}",
+                  f"   выводов: {r.get('n', 1)} · вывел всего: {money(r.get('usd') or f['usd'])}"]
+        if x.get("wallet_left") is not None:
+            lines.append(f"   на кошельке: {num(x['wallet_left'])} {e(base)} (~{money(x.get('wallet_left_usd'))})")
+        if x.get("native") is not None:
+            lines.append(f"   ⛽ native: {x['native']:.4f} {NATIVE.get(ch, '')} (~{money(x.get('native_usd'))})")
+    lines += ["", f"🕒 {utc(f['ts'])} · <a href=\"{e(tx_url(ch, f['tx']))}\">tx</a>",
+              tags("DEPOSIT" if dep else "WITHDRAWAL", base, f["exchange"])]
     return "\n".join(lines)

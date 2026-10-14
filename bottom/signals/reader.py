@@ -7,7 +7,7 @@ import time
 
 from .store import SignalStore
 
-FEEDS = ("oi", "funding", "spreads", "transfers", "dex")
+FEEDS = ("oi", "funding", "spreads", "flows", "dex", "status")
 
 
 def _brief(feed: str, d: dict) -> dict:
@@ -18,8 +18,11 @@ def _brief(feed: str, d: dict) -> dict:
         return {"kind": d.get("kind"), "trigger": d.get("trigger"), "bases": d.get("bases"),
                 "rates": {r["ex"]: r["funding_pct"] for r in d.get("rows") or []}}
     elif feed == "spreads":
-        keys = ("buy", "sell", "gross_pct", "route", "held_min", "max_pct", "capacity")
-    elif feed == "transfers":
+        keys = ("type", "cheap", "dear", "gross_pct", "carry_8h_pct", "held_min", "max_pct", "capacity", "context",
+                "index_flags", "flags")
+    elif feed == "flows":
+        keys = ("kind", "exchange", "chain", "usd", "amount", "pct_vol", "pct_mcap", "whale", "frm", "to", "wallet_left")
+    elif feed == "status":
         keys = ("changes",)
     else:
         keys = ("net_sold_usd", "pct_of_liquidity", "sells", "minutes", "wallet")

@@ -74,7 +74,18 @@ async def main() -> None:
     journal = Journal(s.db_path)
     toolbox = Toolbox(s, tg_store, collector=collector, vision=vision, journal=journal)
     learner = Learner(journal, backend, toolbox.pool)
-    agent = Agent(backend, toolbox, s.timezone, s.max_steps_per_question, learner=learner)
+    if s.llm.provider == "claude_code":
+        from .claude_code import ClaudeCodeAgent
+
+        fallback = None
+        if s.llm_fallback is not None:  # the API model stays as the fallback
+            from .llm import _single
+
+            fb = _single(s.llm_fallback)
+            fallback = Agent(fb, toolbox, s.timezone, s.max_steps_per_question, learner=learner)
+        agent = ClaudeCodeAgent(s, toolbox, learner=learner, fallback=fallback, model=s.llm.model)
+    else:
+        agent = Agent(backend, toolbox, s.timezone, s.max_steps_per_question, learner=learner)
     bot = BottomBot(s, agent, Storage(s.db_path), journal=journal, learner=learner, vision=vision)
     log.info("Bottom запущен: llm=%s tools=%s", backend.name, list(toolbox.tools))
     learn_task = asyncio.create_task(learning_loop(s, learner))

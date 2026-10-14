@@ -93,7 +93,7 @@ class Settings:
 def _llm(prefix: str) -> LLMConfig | None:
     model = os.getenv(f"{prefix}MODEL", "")
     provider = os.getenv(f"{prefix}PROVIDER", "openai").lower()
-    if not model and provider != "anthropic":
+    if not model and provider not in ("anthropic", "claude_code"):
         return None
     key = os.getenv(f"{prefix}API_KEY", "")
     if provider == "anthropic":

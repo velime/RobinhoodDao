@@ -21,10 +21,17 @@ def static_checks(s: Settings) -> list[tuple[str, str, str]]:
         out.append((FAIL, "Файл .env", "не найден — запусти install.bat или скопируй .env.example в .env"))
     if not s.telegram_token or ":" not in s.telegram_token:
         out.append((FAIL, "TELEGRAM_BOT_TOKEN", "пусто или неверный формат — возьми токен у @BotFather (вида 123456:ABC...)"))
-    if not s.llm.model:
-        out.append((FAIL, "LLM_MODEL", "не задана модель — впиши имя модели Gemini из AI Studio"))
-    if s.llm.provider != "anthropic" and not s.llm.api_key:
-        out.append((FAIL, "LLM_API_KEY", "пусто — ключ Gemini: https://aistudio.google.com/apikey"))
+    if s.llm.provider == "claude_code":
+        from .claude_code import find_claude
+
+        exe = find_claude()
+        out.append((OK, "Claude Code", exe) if exe else
+                   (FAIL, "Claude Code", "не найден — запусти claude_setup.bat (или укажи CLAUDE_BIN)"))
+    else:
+        if not s.llm.model:
+            out.append((FAIL, "LLM_MODEL", "не задана модель — впиши имя модели Gemini из AI Studio"))
+        if s.llm.provider != "anthropic" and not s.llm.api_key:
+            out.append((FAIL, "LLM_API_KEY", "пусто — ключ Gemini: https://aistudio.google.com/apikey"))
     if s.llm_fallback is None:
         out.append((WARN, "Запасная модель", "не задана (FALLBACK_LLM_MODEL) — бот будет работать только на основной"))
     elif s.llm_fallback.provider != "anthropic" and not s.llm_fallback.api_key:
@@ -62,9 +69,9 @@ async def _check_llm(label: str, cfg: LLMConfig) -> tuple[str, str, str]:
     try:
         sess = _single(cfg).new_session("Отвечай одним словом.", [], "Скажи: OK")
         res = await asyncio.wait_for(sess.step([], allow_tools=False), 60)
-        return OK, label, f"{cfg.model} отвечает: {res.text.strip()[:30]!r}"
+        return OK, label, f"{cfg.model or cfg.provider} отвечает: {res.text.strip()[:30]!r}"
     except Exception as e:  # noqa: BLE001
-        return FAIL, label, f"{cfg.model}: {type(e).__name__}: {str(e)[:200]}"
+        return FAIL, label, f"{cfg.model or cfg.provider}: {type(e).__name__}: {str(e)[:200]}"
 
 
 async def _check_exchange() -> tuple[str, str, str]:
@@ -83,7 +90,7 @@ async def run() -> int:
     net = []
     if s.telegram_token:
         net.append(_check_bot(s.telegram_token))
-    if s.llm.model:
+    if s.llm.model or s.llm.provider == "claude_code":
         net.append(_check_llm("Основная модель", s.llm))
     if s.llm_fallback:
         net.append(_check_llm("Запасная модель", s.llm_fallback))

@@ -34,6 +34,14 @@ class SignalStore:
             );
             CREATE INDEX IF NOT EXISTS alerts_feed_ts ON alerts(feed, ts);
             CREATE INDEX IF NOT EXISTS alerts_base_ts ON alerts(base, ts);
+            CREATE TABLE IF NOT EXISTS flows (
+                ts REAL NOT NULL, chain TEXT, base TEXT, token TEXT, kind TEXT, exchange TEXT, frm TEXT, "to" TEXT,
+                amount REAL, usd REAL, tx TEXT, PRIMARY KEY (tx, frm, "to", token)
+            ) WITHOUT ROWID;
+            CREATE INDEX IF NOT EXISTS flows_base_ts ON flows(base, ts);
+            CREATE TABLE IF NOT EXISTS learned_wallets (
+                fam TEXT NOT NULL, addr TEXT NOT NULL, entity TEXT, type TEXT, ts REAL, PRIMARY KEY (fam, addr)
+            ) WITHOUT ROWID;
             """
         )
         self.db.commit()
@@ -98,6 +106,37 @@ class SignalStore:
               None if r["withdraw"] is None else int(r["withdraw"]), r["fee"], r["contract"], now) for r in rows])
         self.db.commit()
 
+    # ---- on-chain flows ---------------------------------------------------------
+    def add_flow(self, f: dict) -> bool:
+        cur = self.db.execute(
+            'INSERT OR IGNORE INTO flows(ts, chain, base, token, kind, exchange, frm, "to", amount, usd, tx) '
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (f["ts"], f["chain"], f["base"], f["token"], f["kind"], f["exchange"], f["frm"], f["to"], f["amount"],
+             f["usd"], f["tx"]))
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def flows(self, base: str | None = None, days: float = 30, kind: str | None = None, exchange: str | None = None,
+              wallet: str | None = None) -> list[dict]:
+        q = 'SELECT ts, chain, base, token, kind, exchange, frm, "to", amount, usd, tx FROM flows WHERE ts >= ?'
+        args: list = [time.time() - days * 86400]
+        for col, v in (("base", base), ("kind", kind), ("exchange", exchange)):
+            if v:
+                q += f" AND {col} = ?"
+                args.append(v)
+        if wallet:
+            q += ' AND (frm = ? OR "to" = ?)'
+            args += [wallet, wallet]
+        cols = ("ts", "chain", "base", "token", "kind", "exchange", "frm", "to", "amount", "usd", "tx")
+        return [dict(zip(cols, r)) for r in self.db.execute(q + " ORDER BY ts", args)]
+
+    def learned_wallets(self) -> list[tuple]:
+        return self.db.execute("SELECT fam, addr, entity, type FROM learned_wallets").fetchall()
+
+    def add_learned_wallet(self, fam: str, addr: str, entity: str, typ: str) -> None:
+        self.db.execute("INSERT OR IGNORE INTO learned_wallets VALUES (?,?,?,?,?)", (fam, addr, entity, typ, time.time()))
+        self.db.commit()
+
     # ---- alerts ---------------------------------------------------------------
     def add_alert(self, feed: str, base: str | None, ex: str | None, data: dict, text: str, msg_id: int | None) -> None:
         self.db.execute("INSERT INTO alerts(ts, feed, base, ex, data, text, msg_id) VALUES (?,?,?,?,?,?,?)",
@@ -126,4 +165,5 @@ class SignalStore:
         self.db.execute("DELETE FROM oi_snap WHERE ts < ?", (int(now) - 6 * 3600,))
         self.db.execute("DELETE FROM spread_seen WHERE ts < ?", (int(now) - 2 * 86400,))
         self.db.execute("DELETE FROM alerts WHERE ts < ?", (now - 30 * 86400,))
+        self.db.execute("DELETE FROM flows WHERE ts < ?", (now - 90 * 86400,))
         self.db.commit()
