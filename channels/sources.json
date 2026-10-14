@@ -1945,6 +1945,17 @@
    "enabled": true,
    "verdict": null,
    "note": null
+  },
+  {
+   "id": -1003657510523,
+   "username": null,
+   "title": "Ultra (OI, Funding, Dep/With, Whale perp)",
+   "kind": "forum",
+   "public": false,
+   "enabled": true,
+   "verdict": "crypto",
+   "manual": true,
+   "note": "чужие алерты — только дополнительный источник; основа — свои сканеры"
   }
  ]
 }

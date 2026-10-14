@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -18,6 +19,8 @@ from . import websearch
 from .indicators import summarize_candles
 from .setup_calc import calc_setup
 from .ultra import ultra_alerts
+from . import oicard, onchain, spreads, transfers
+from ..signals.reader import signals as read_signals
 
 log = logging.getLogger(__name__)
 
@@ -167,6 +170,53 @@ class Toolbox:
             "за 1ч и 4ч, доля покупок, соотношение объёмов перп/спот и вывод. Аналог A/D спот/перп из Ultra.",
             {"symbol": SYM}, ["symbol"], "🌊 Смотрю поток спот/перп",
             lambda symbol: deriv.spot_perp_flow(exch.normalize_base(symbol)),
+        )
+        self._add(
+            "oi_card",
+            "Своя карточка OI по монете (Binance и Bybit): OI и его изменение за 4ч и 15м, $ притока, цена 4ч, "
+            "фандинг, L/S, Mark, Book Delta, стенки стакана, A/D спот/перп, OI/MCap; и разбор по методичке: "
+            "паттерн, сценарий, комбинации 1–10, красные флаги. Для вопросов про OI, сквиз, «кто заходит».",
+            {"symbol": SYM}, ["symbol"], "📈 Считаю OI",
+            lambda symbol: oicard.oi_card(exch.normalize_base(symbol), s.coingecko_api_key),
+        )
+        self._add(
+            "spread_check",
+            "Реальный спред монеты: все биржи (спот и перп) и DEX-пулы её настоящего контракта; лучшая пара "
+            "купить/продать, маршрут перевода (вывод и депозит открыты на общей сети, тот же контракт), сколько "
+            "спред держится по истории 5м, сужается ли, сколько помещается в стаканы после комиссий, вердикт "
+            "входить или нет. Перп-перп спред — отдельно. Только когда спрашивают про спред/арбитраж.",
+            {"symbol": SYM, "hours": {"type": "integer", "description": "Окно истории спреда, ч (по умолчанию 6)"}},
+            ["symbol"], "🔀 Проверяю спред",
+            lambda symbol, hours=6: spreads.spread_check(self.pool, symbol, max(1, min(int(hours), 24))),
+        )
+        self._add(
+            "transfer_status",
+            "Депозиты и выводы монеты на биржах по всем сетям: открыто/закрыто, комиссия вывода, контракт; "
+            "конфликты контрактов (другой токен с тем же тикером). Bybit/OKX/MEXC/BingX — только с API-ключом.",
+            {"symbol": SYM}, ["symbol"], "🏦 Смотрю депы и выводы",
+            lambda symbol: transfers.transfer_status(exch.normalize_base(symbol)),
+        )
+        self._add(
+            "dex_whales",
+            "Кто сливает в главный DEX-пул монеты: кошельки с чистыми продажами за окно, доля от ликвидности пула.",
+            {"query": {"type": "string", "description": "Тикер или адрес контракта"},
+             "window_min": {"type": "integer", "description": "Окно, минут (по умолчанию 60)"}},
+            ["query"], "🐋 Смотрю сливы на DEX",
+            lambda query, window_min=60: onchain.dex_whales(query, max(5, min(int(window_min), 1440))),
+        )
+        signals_db = os.getenv("SIGNALS_DB", "data/signals.db")
+        self._add(
+            "signals",
+            "Алерты НАШИХ сканеров (группа сигналов): oi — всплески OI, funding — экстремальный фандинг и "
+            "скачки, spreads — спреды с проверкой маршрута, transfers — открытие/закрытие депозитов и выводов, "
+            "dex — сливы китов в пулы. Без тикера — какие монеты чаще всего в сигналах; с тикером — история по "
+            "монете. Основа для «что сейчас интересного / лучший сетап».",
+            {"feed": {"type": "string", "enum": ["", "oi", "funding", "spreads", "transfers", "dex"]},
+             "symbol": {"type": "string", "description": "Тикер; пусто — обзор"},
+             "hours": {"type": "integer", "description": "За сколько часов (по умолчанию 24)"}},
+            [], "📡 Смотрю наши сигналы",
+            lambda feed="", symbol="", hours=24: asyncio.to_thread(
+                read_signals, signals_db, feed, symbol, max(1, min(int(hours), 720))),
         )
         self._add(
             "token_fundamentals",
