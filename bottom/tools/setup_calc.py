@@ -129,3 +129,46 @@ def calc_setup(
         "suggestions": suggestions,
         "note": "R:R и % считаются от худшей точки зоны входа; используй эти числа как есть",
     }
+
+
+def entry_status(direction: str, lo: float, hi: float, stop: float, tp1: float, price: float | None) -> dict:
+    """Where the live price is relative to the plan — a call on a stale price is the classic mistake."""
+    if not price:
+        return {"status": "unknown"}
+    long = direction == "long"
+    if (long and price <= stop) or (not long and price >= stop):
+        return {"status": "invalid", "price": price, "note": "цена уже за стопом — идея сломана, сетап не давать"}
+    if lo <= price <= hi:
+        return {"status": "in_zone", "price": price, "note": "цена в зоне входа"}
+    ahead = (price > hi) if long else (price < lo)
+    if not ahead:  # moved toward the stop, past the zone
+        edge = lo if long else hi
+        return {"status": "past_zone", "price": price,
+                "note": f"цена прошла зону к стопу ({_r(abs(price - edge) / edge * 100)}% от зоны) — вход хуже плана, R:R меньше"}
+    edge = hi if long else lo
+    progress = abs(price - edge) / abs(tp1 - edge) if tp1 != edge else 1.0
+    if progress >= 0.5:
+        return {"status": "gone", "price": price, "progress_to_tp1_pct": _r(progress * 100),
+                "note": f"вход ушёл: цена прошла {_r(progress * 100)}% пути к TP1 — от текущих не входить, только "
+                        f"лимитка в зоне на откате"}
+    return {"status": "away", "price": price, "progress_to_tp1_pct": _r(progress * 100),
+            "note": "цена над зоной входа — лимитка, не рынок" if long else "цена под зоной входа — лимитка, не рынок"}
+
+
+def stop_hunt_warnings(direction: str, lo: float, hi: float, stop: float, levels: list[tuple[float, str]],
+                       max_risk: float = 2.5) -> list[str]:
+    """A swing high/low just beyond the stop is liquidity: the stop sits on the path of its sweep."""
+    long = direction == "long"
+    entry = hi if long else lo
+    risk = abs(entry - stop)
+    out, seen = [], set()
+    for price, label in sorted(levels, key=lambda x: abs(x[0] - stop)):
+        beyond = price < stop if long else price > stop
+        if not beyond or not risk:
+            continue
+        k = abs(stop - price) / risk
+        if k <= max_risk and round(price, 12) not in seen:
+            seen.add(round(price, 12))
+            out.append(f"{label} {price:.6g} стоит сразу за стопом ({_r(k)} риска) — вероятен съём стопа перед "
+                       "разворотом: стоп за этот уровень, вход ближе к нему или меньший риск")
+    return out[:2]

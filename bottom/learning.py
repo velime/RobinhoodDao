@@ -461,6 +461,14 @@ class Learner:
         self.backend = backend
         self.pool = pool
         self._block_cache: tuple[float, str] = (0.0, "")
+        try:  # reference caller's calls shipped with Bottom → journal (first run only)
+            from . import reference
+
+            n = reference.load_bundled(journal.db)
+            if n:
+                log.info("reference calls loaded: %d", n)
+        except Exception as e:  # noqa: BLE001
+            log.info("reference load: %s", e)
 
     def lessons_block(self) -> str:
         """Text appended to the system prompt: track record + active lessons (cached 10 min)."""
@@ -481,6 +489,14 @@ class Learner:
                 f"#{i} {t}" + (" (от админа)" if kind == "manual" else "")
                 + (f" [СПОРНО: {reason}]" if status == "contested" else "")
                 for i, t, kind, status, reason in lessons))
+        try:
+            from . import reference
+
+            ref = reference.experience_lines(self.journal.db)
+            if ref:
+                parts.append("\n".join(ref))
+        except Exception as e:  # noqa: BLE001
+            log.info("reference stats: %s", e)
         text = ("\n\n# 10. Опыт\n" + "\n".join(parts)) if parts else ""
         self._block_cache = (time.time(), text)
         return text
@@ -504,6 +520,13 @@ class Learner:
             res = evaluate_setup(st, candles)
             self.journal.update_setup(st["id"], res)
             closed += res.get("status") == "closed"
+        try:  # the reference caller's calls, a few per run, on the same evaluator
+            from . import reference
+
+            if self.pool is not None:
+                closed += await reference.evaluate(self.journal.db, self.pool, limit=20)
+        except Exception as e:  # noqa: BLE001
+            log.info("reference evaluate: %s", e)
         if closed:
             self.invalidate()
         return closed

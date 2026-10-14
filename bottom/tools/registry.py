@@ -17,7 +17,7 @@ from . import fundamentals as fund
 from . import news
 from . import websearch
 from .indicators import summarize_candles
-from .setup_calc import calc_setup
+from .setup_calc import calc_setup, entry_status, stop_hunt_warnings
 from .ultra import ultra_alerts
 from . import oicard, onchain, spreads, transfers
 from ..signals.reader import signals as read_signals
@@ -105,9 +105,37 @@ class Toolbox:
 
     async def _calc_setup(self, symbol: str, direction: str, entry_low: float, stop: float,
                           targets: list[float], entry_high: float | None = None) -> dict:
-        atr_pct = await self._atr_pct_1h(symbol)
-        return calc_setup(self.s.risk, symbol, direction, float(entry_low), float(stop),
-                          [float(t) for t in targets], float(entry_high) if entry_high else None, atr_pct)
+        async def summary(tf):
+            try:
+                return await self._candles(symbol, tf, 100)
+            except Exception:  # noqa: BLE001
+                return {}
+
+        h1, h4 = await asyncio.gather(summary("1h"), summary("4h"))
+        res = calc_setup(self.s.risk, symbol, direction, float(entry_low), float(stop),
+                         [float(t) for t in targets], float(entry_high) if entry_high else None, h1.get("atr14_pct"))
+        if res.get("verdict") not in ("OK", "REJECT"):
+            return res
+        lo = float(entry_low)
+        hi = float(entry_high) if entry_high else lo
+        lo, hi = min(lo, hi), max(lo, hi)
+        tp1 = sorted(float(t) for t in targets)[0] if direction == "long" else sorted(float(t) for t in targets)[-1]
+        st = entry_status(direction, lo, hi, float(stop), tp1, h1.get("last_close"))
+        res["entry_status"] = st
+        if st["status"] == "invalid":
+            res["verdict"] = "REJECT"
+            res.setdefault("problems", []).append(st["note"])
+        levels = []
+        for tf, s in (("1ч", h1), ("4ч", h4)):
+            lv = s.get("levels") or {}
+            levels += [(p, f"свинг {tf}") for p in (lv.get("support") or []) + (lv.get("resistance") or [])]
+            rg = s.get("range_24h") or {}
+            if tf == "1ч" and rg.get("high"):
+                levels += [(rg["high"], "хай 24ч"), (rg["low"], "лоу 24ч")]
+        warn = stop_hunt_warnings(direction, lo, hi, float(stop), levels)
+        if warn:
+            res["warnings"] = res.get("warnings", []) + warn
+        return res
 
     def _flows(self, base: str, days: int) -> dict:
         path = os.getenv("SIGNALS_DB", "data/signals.db")
@@ -348,6 +376,27 @@ class Toolbox:
         if self.journal is not None:
             journal = self.journal
 
+            async def reference_calls(symbol: str = "", tag: str = "") -> dict:
+                from .. import reference
+
+                return await asyncio.to_thread(reference.lookup, journal.db, symbol, tag)
+
+            self._add(
+                "reference_calls",
+                "Колы референсного авто-колера (учебный материал) с их реальным исходом на свечах: по монете или "
+                "по типу идеи, и статистика, какие идеи у него работали (винрейт до TP1, средний R, доля "
+                "неисполненных). Смотри перед сетапом похожего типа. Его уровни не копировать.",
+                {
+                    "symbol": {"type": "string", "description": "Тикер; пусто — все"},
+                    "tag": {"type": "string", "enum": ["", "exhausted_squeeze", "squeeze", "oi_flip", "oi_alert",
+                                                       "onchain_distribution", "onchain_accumulation", "funding_payout",
+                                                       "listing", "news", "fvg_limit", "range_extreme", "spot_led",
+                                                       "tokenized_stock"]},
+                },
+                [], "📚 Смотрю опыт референса",
+                reference_calls,
+            )
+
             async def track_record(symbol: str = "", days: int = 90) -> dict:
                 return journal.track_record(symbol, int(days))
 
@@ -433,7 +482,9 @@ class Toolbox:
             "calc_setup",
             "ОБЯЗАТЕЛЬНО перед любым сетапом. Проверяет вход/стоп/цели: геометрию, минимальную дистанцию стопа "
             "(с учётом ATR), минимальный R:R; считает R:R к каждой цели, % до стопа и потери/прибыль для плеч "
-            "3/5/10/20x. Вердикт OK/REJECT/ERROR с причинами и подсказками.",
+            "3/5/10/20x. Вердикт OK/REJECT/ERROR с причинами и подсказками. entry_status — где живая цена "
+            "относительно плана (in_zone / away — только лимитка / gone — вход ушёл / invalid — за стопом); "
+            "warnings — ликвидность сразу за стопом (риск съёма стопа).",
             {
                 "symbol": SYM,
                 "direction": {"type": "string", "enum": ["long", "short"]},
