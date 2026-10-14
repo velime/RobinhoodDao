@@ -19,6 +19,7 @@ from .config import Settings
 from .formatting import strip_markup, to_telegram_chunks
 from .prompts import FAQ
 from .storage import Storage
+from .tools.ultra import classify, parse_alert
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ def conv_key(message: Message) -> str:
 
 
 IMAGE_ONLY_QUESTION = "Разбери картинку, которую я прислал."
+REPLIED_ONLY_QUESTION = "Разбери сообщение, на которое я ответил."
 
 
 def extract_question(message: Message, bot_username: str, bot_id: int) -> str | None:
@@ -55,6 +57,8 @@ def extract_question(message: Message, bot_username: str, bot_id: int) -> str | 
     q = re.sub(re.escape(mention), "", text, flags=re.I).strip()
     if not q and getattr(message, "photo", None):
         return IMAGE_ONLY_QUESTION
+    if not q and message.reply_to_message and not replied_to_bot:
+        return REPLIED_ONLY_QUESTION  # bare @mention under someone's alert/chart
     return q or None
 
 
@@ -250,10 +254,20 @@ class BottomBot:
         if rt and rt.from_user and self.me and rt.from_user.id != self.me.id and (rt.text or rt.caption):
             question = f"Контекст — сообщение, на которое ответили:\n«{(rt.text or rt.caption)[:1500]}»\n\nВопрос: {question}"
 
+        alert = parse_alert(question)
+        if alert:  # a forwarded/replied Ultra alert: give the model the code's reading of it
+            c = classify(alert)
+            question += (f"\n[Разбор алерта Ultra кодом: ${alert['ticker']} {alert['exchange']}; паттерн — {c['pattern']}"
+                         + (f"; флаги — {'; '.join(c['flags'])}" if c["flags"] else "")
+                         + ". Серию по монете смотри через ultra_alerts, текущие цифры — свежими данными.]")
+
         status = StatusMessage(await message.reply(THINKING[0], parse_mode=None))
         conv = conv_key(message)
         if getattr(message, "photo", None):
             question = await self._with_image(message, question, status)
+        elif rt and getattr(rt, "photo", None) and not (self.me and rt.from_user and rt.from_user.id == self.me.id):
+            # the question replies to someone's chart/screenshot — look at that picture
+            question = await self._with_image(rt, question, status, replied=True)
         try:
             result = await asyncio.wait_for(
                 self.agent.answer(question, self.storage.history(conv), on_status=status.update, step_budget=left),
@@ -284,15 +298,16 @@ class BottomBot:
                 "на сегодня. Когда шаги закончатся, продолжим уже завтра."
             )
 
-    async def _with_image(self, message: Message, question: str, status: StatusMessage) -> str:
-        """User sent a picture (chart, screenshot): describe it and add to the question."""
+    async def _with_image(self, message: Message, question: str, status: StatusMessage, replied: bool = False) -> str:
+        """A picture (chart, screenshot) sent by the user or in the message they replied to: describe it."""
+        who = "В сообщении, на которое ответили, картинка" if replied else "Пользователь прислал картинку"
         if self.vision is None or not self.vision.enabled:
-            return question + "\n[Пользователь прислал картинку, но разбор картинок не настроен.]"
+            return question + f"\n[{who}, но разбор картинок не настроен.]"
         await status.update("🖼 Смотрю картинку")
         try:
             buf = await self.bot.download(message.photo[-1])
             desc = await self.vision.describe(buf.read(), "image/jpeg", context=message.caption or "")
-            return f"[Пользователь прислал картинку. Что на ней: {desc}]\n{question}"
+            return f"[{who}. Что на ней: {desc}]\n{question}"
         except Exception as e:  # noqa: BLE001
             log.info("user image failed: %s", e)
             return question + "\n[Картинку разобрать не удалось.]"

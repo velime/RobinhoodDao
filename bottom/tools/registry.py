@@ -17,10 +17,11 @@ from . import news
 from . import websearch
 from .indicators import summarize_candles
 from .setup_calc import calc_setup
+from .ultra import ultra_alerts
 
 log = logging.getLogger(__name__)
 
-TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"]
+TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"]
 TOOL_TIMEOUT = 60  # seconds per tool call
 
 
@@ -80,7 +81,7 @@ class Toolbox:
             return meta
         s = summarize_candles(candles)
         # 24h range position from the same series
-        per_day = {"5m": 288, "15m": 96, "1h": 24, "4h": 6, "1d": 1}[timeframe]
+        per_day = {"1m": 1440, "5m": 288, "15m": 96, "1h": 24, "4h": 6, "1d": 1}[timeframe]
         day = candles[-per_day:]
         hi, lo = max(c["h"] for c in day), min(c["l"] for c in day)
         s["range_24h"] = {
@@ -88,6 +89,8 @@ class Toolbox:
             "low": lo,
             "position_pct": round((candles[-1]["c"] - lo) / (hi - lo) * 100, 1) if hi > lo else None,
         }
+        if len(candles) < per_day:  # 1m: 500 candles cover ~8h, not a day
+            s["range_24h"]["covers_hours"] = round(len(candles) * 24 / per_day, 1)
         return {"source": meta, "timeframe": timeframe, **s}
 
     async def _atr_pct_1h(self, symbol: str) -> float | None:
@@ -135,8 +138,10 @@ class Toolbox:
         self._add(
             "candles",
             "Свечи и расчёты по ним: EMA20/50/200, RSI14, Stoch, ATR14 (и в %), ближайшие уровни поддержки/"
-            "сопротивления (свинг-хаи/лоу = пулы ликвидности), позиция в 24ч диапазоне, всплеск объёма и "
-            "числа сделок, дельта покупок/продаж и CVD (если Binance-перп).",
+            "сопротивления (свинг-хаи/лоу = пулы ликвидности) и сколько раз их тестировали (level_touches), "
+            "MACD (кросс, рост гистограммы), Боллинджер (ширина, позиция), Фибоначчи последнего импульса, "
+            "позиция в 24ч диапазоне, всплеск объёма и числа сделок, дельта покупок/продаж и CVD (если "
+            "Binance-перп). 1m/5m/15m — для скальпа, 1h/4h/1d — для свинга.",
             {
                 "symbol": SYM,
                 "timeframe": {"type": "string", "enum": TIMEFRAMES},
@@ -157,6 +162,13 @@ class Toolbox:
             lambda symbol, market="perp", exchange=None: exch.orderbook(self.pool, symbol, market, exchange or None),
         )
         self._add(
+            "spot_perp_flow",
+            "Кто ведёт движение: чистые агрессивные покупки (taker buy − sell, $) на споте и на перпе Binance "
+            "за 1ч и 4ч, доля покупок, соотношение объёмов перп/спот и вывод. Аналог A/D спот/перп из Ultra.",
+            {"symbol": SYM}, ["symbol"], "🌊 Смотрю поток спот/перп",
+            lambda symbol: deriv.spot_perp_flow(exch.normalize_base(symbol)),
+        )
+        self._add(
             "token_fundamentals",
             "Фундаментал с CoinGecko: описание, категории, MCap, FDV, FDV/MCap, оборот/MCap, эмиссия, ATH, "
             "изменения 1ч/24ч/7д/30д, контракты по сетям, сайт и X проекта. Нужен coingecko_id из resolve_token.",
@@ -165,8 +177,8 @@ class Toolbox:
         )
         self._add(
             "dex_pairs",
-            "DEX-пары с DexScreener: сеть, DEX, цена, ликвидность, объём 1ч/24ч, покупки/продажи, FDV, возраст пары. "
-            "Для мемов, свежих запусков и токенов без CEX.",
+            "DEX-пары (DexScreener, если пусто — GeckoTerminal): сеть, DEX, цена, ликвидность, объём 1ч/24ч, "
+            "покупки/продажи, FDV, возраст пары. Для мемов, свежих запусков, токенов без CEX и новых сетей.",
             {"query": {"type": "string", "description": "Тикер или адрес контракта"}},
             ["query"], "🧪 Смотрю DEX-пары",
             lambda query: fund.dex_pairs(query),
@@ -248,6 +260,23 @@ class Toolbox:
                 },
                 [], "💬 Читаю Telegram-каналы",
                 tg_posts,
+            )
+
+            async def ultra(symbol: str = "", hours: int = 24) -> dict:
+                return ultra_alerts(store, symbol, max(1, min(int(hours), 24 * 14)))
+
+            self._add(
+                "ultra_alerts",
+                "Алерты Ultra (OVERTAKE OI-бот) из Telegram: всплески открытого интереса с ценой, фандингом, L/S, "
+                "Book Delta, A/D спот/перп, OI/MCap и стенами. Без тикера — рейтинг монет за период (серии, обе "
+                "биржи, паттерн и красные флаги по методичке); с тикером — вся серия алертов по монете. "
+                "Это фильтр-кандидатов: перед выводом проверь текущие цифры другими инструментами.",
+                {
+                    "symbol": {"type": "string", "description": "Тикер; пусто — рейтинг всех монет с алертами"},
+                    "hours": {"type": "integer", "description": "За сколько часов (по умолчанию 24, до 336)"},
+                },
+                [], "📡 Смотрю алерты Ultra",
+                ultra,
             )
         if self.journal is not None:
             journal = self.journal

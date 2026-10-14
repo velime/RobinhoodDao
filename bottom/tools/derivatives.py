@@ -17,6 +17,7 @@ from .symbols import normalize_base
 log = logging.getLogger(__name__)
 
 BINANCE_F = "https://fapi.binance.com"
+BINANCE_S = "https://api.binance.com"
 BYBIT = "https://api.bybit.com"
 OKX = "https://www.okx.com"
 
@@ -225,3 +226,37 @@ async def binance_klines(market_id: str, interval: str, limit: int) -> list[dict
         }
         for k in raw
     ]
+
+
+def _net_flow(raw: list, n: int) -> dict:
+    """Taker net (buy − sell) in quote currency over the last n klines; index 7 quote vol, 10 taker-buy quote."""
+    w = raw[-n:]
+    vol = sum(float(k[7]) for k in w)
+    buy = sum(float(k[10]) for k in w)
+    return {"net_usd": round(2 * buy - vol), "volume_usd": round(vol), "buy_share_pct": round(buy / vol * 100, 1) if vol else None}
+
+
+async def spot_perp_flow(base: str) -> dict:
+    """Who drives the move: aggressive spot buying vs perp (leverage) buying, last 1h and 4h (Binance, 5m klines)."""
+    pair = f"{base.upper()}USDT"
+    out: dict = {"source": "binance 5m klines, taker buy − taker sell, USDT", "pair": pair}
+    for name, url in (("spot", f"{BINANCE_S}/api/v3/klines"), ("perp", f"{BINANCE_F}/fapi/v1/klines")):
+        try:
+            raw = await http.get_json(url, {"symbol": pair, "interval": "5m", "limit": 48})
+            out[name] = {"1h": _net_flow(raw, 12), "4h": _net_flow(raw, 48)}
+        except Exception as e:  # noqa: BLE001
+            out[name] = {"error": f"нет рынка на Binance или не ответил: {type(e).__name__}"}
+    sp, pp = out["spot"].get("4h"), out["perp"].get("4h")
+    if sp and pp:
+        s, p = sp["net_usd"], pp["net_usd"]
+        if s > 0 and p > 0:
+            out["read"] = "спот и перп покупают — органический спрос"
+        elif s <= 0 < p:
+            out["read"] = "покупают только перпы, спот продают — рост на плечах, хрупко"
+        elif s > 0 >= p:
+            out["read"] = "спот покупают, перпы продают/шортят — накопление на споте, топливо для сквиза"
+        else:
+            out["read"] = "продают и спот, и перп"
+        if sp["volume_usd"] and pp["volume_usd"]:
+            out["perp_to_spot_volume"] = round(pp["volume_usd"] / sp["volume_usd"], 1)
+    return out

@@ -99,3 +99,10 @@ def test_storage(tmp_path):
     st.add_steps(5, 4)
     st.add_steps(5, 3)
     assert st.steps_used(5) == 7
+
+
+def test_extract_question_bare_mention_under_someones_message():
+    from bottom.bot import REPLIED_ONLY_QUESTION
+
+    assert extract_question(_msg("@bottom_bot", ChatType.SUPERGROUP, reply_from_id=2), "bottom_bot", 1) == REPLIED_ONLY_QUESTION
+    assert extract_question(_msg("@bottom_bot", ChatType.SUPERGROUP), "bottom_bot", 1) is None

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from datetime import datetime
 
 from . import http
 from .symbols import normalize_base
@@ -104,7 +105,74 @@ async def token_fundamentals(coingecko_id: str, cg_key: str = "") -> dict:
     }
 
 
+GECKOTERMINAL = "https://api.geckoterminal.com/api/v2"
+
+
+def _num(x):
+    try:
+        return float(x) if x is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+async def geckoterminal_pools(query: str, limit: int = 6) -> dict:
+    """GeckoTerminal pool search — covers chains and DEXes DexScreener misses (incl. new L2s like Robinhood Chain)."""
+    data = await http.get_json(f"{GECKOTERMINAL}/search/pools", {"query": query.strip()},
+                               {"Accept": "application/json;version=20230302"})
+    now = time.time()
+    out = []
+    pools = data.get("data") or []
+    pools.sort(key=lambda p: -(_num((p.get("attributes") or {}).get("reserve_in_usd")) or 0))
+    for p in pools[:limit]:
+        a = p.get("attributes") or {}
+        rel = p.get("relationships") or {}
+        tx = (a.get("transactions") or {})
+        created = a.get("pool_created_at")
+        age = None
+        if created:
+            try:
+                age = round((now - datetime.fromisoformat(created.replace("Z", "+00:00")).timestamp()) / 86400, 1)
+            except ValueError:
+                pass
+        out.append({
+            "chain": ((rel.get("network") or {}).get("data") or {}).get("id"),
+            "dex": ((rel.get("dex") or {}).get("data") or {}).get("id"),
+            "pair": a.get("name"),
+            "pair_address": a.get("address"),
+            "price_usd": _num(a.get("base_token_price_usd")),
+            "liquidity_usd": _num(a.get("reserve_in_usd")),
+            "volume_24h_usd": _num((a.get("volume_usd") or {}).get("h24")),
+            "volume_1h_usd": _num((a.get("volume_usd") or {}).get("h1")),
+            "change_1h_pct": _num((a.get("price_change_percentage") or {}).get("h1")),
+            "change_24h_pct": _num((a.get("price_change_percentage") or {}).get("h24")),
+            "txns_24h_buys_sells": [(tx.get("h24") or {}).get("buys"), (tx.get("h24") or {}).get("sells")],
+            "txns_1h_buys_sells": [(tx.get("h1") or {}).get("buys"), (tx.get("h1") or {}).get("sells")],
+            "fdv_usd": _num(a.get("fdv_usd")),
+            "market_cap_usd": _num(a.get("market_cap_usd")),
+            "pair_age_days": age,
+        })
+    return {"query": query, "pairs": out, "source": "GeckoTerminal"}
+
+
 async def dex_pairs(query: str, limit: int = 6) -> dict:
+    """DexScreener first; GeckoTerminal when it fails or finds nothing."""
+    try:
+        res = await _dexscreener(query, limit)
+        if res["pairs"]:
+            return res
+    except Exception as e:  # noqa: BLE001
+        res = {"error": f"DexScreener: {type(e).__name__}"}
+    try:
+        gt = await geckoterminal_pools(query, limit)
+        if gt["pairs"]:
+            return gt
+    except Exception as e:  # noqa: BLE001
+        return {"query": query, "error": f"DEX-пары не найдены: {res.get('error') or 'DexScreener пусто'}; "
+                                         f"GeckoTerminal: {type(e).__name__}"}
+    return {"query": query, "pairs": [], "error": "ни DexScreener, ни GeckoTerminal пар не нашли"}
+
+
+async def _dexscreener(query: str, limit: int = 6) -> dict:
     q = query.strip()
     if _ADDR_EVM.match(q) or _ADDR_SOL.match(q):
         data = await http.get_json(f"{DEXS}/latest/dex/tokens/{q}")

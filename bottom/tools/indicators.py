@@ -99,6 +99,58 @@ def pct(a: float | None, b: float | None) -> float | None:
     return (a - b) / b * 100
 
 
+def macd(closes: list[float], fast: int = 12, slow: int = 26, signal: int = 9) -> dict | None:
+    if len(closes) < slow + signal:
+        return None
+    ef, es = ema(closes, fast), ema(closes, slow)
+    line = [f - s for f, s in zip(ef, es) if f is not None and s is not None]
+    sig = ema(line, signal)
+    if sig[-1] is None:
+        return None
+    hist, prev = line[-1] - sig[-1], (line[-2] - sig[-2]) if sig[-2] is not None else None
+    out = {"macd": line[-1], "signal": sig[-1], "hist": hist}
+    if prev is not None:
+        out["cross"] = "бычий кросс" if prev <= 0 < hist else "медвежий кросс" if prev >= 0 > hist else None
+        out["hist_rising"] = hist > prev
+    return out
+
+
+def bollinger(closes: list[float], period: int = 20, k: float = 2.0) -> dict | None:
+    if len(closes) < period:
+        return None
+    w = closes[-period:]
+    mid = sum(w) / period
+    sd = (sum((x - mid) ** 2 for x in w) / period) ** 0.5
+    up, lo = mid + k * sd, mid - k * sd
+    return {
+        "upper": up, "mid": mid, "lower": lo,
+        "width_pct": round((up - lo) / mid * 100, 2) if mid else None,
+        "position_pct": round((closes[-1] - lo) / (up - lo) * 100, 1) if up > lo else None,
+    }
+
+
+def fib_last_impulse(candles: list[dict], lookback: int = 100) -> dict | None:
+    """Retracement levels of the last move between the extreme high and low of the window."""
+    w = candles[-lookback:]
+    if len(w) < 10:
+        return None
+    hi_i = max(range(len(w)), key=lambda i: w[i]["h"])
+    lo_i = min(range(len(w)), key=lambda i: w[i]["l"])
+    hi, lo = w[hi_i]["h"], w[lo_i]["l"]
+    if hi <= lo:
+        return None
+    up = lo_i < hi_i  # impulse up: low came first
+    rng = hi - lo
+    levels = {str(r): (hi - rng * r) if up else (lo + rng * r) for r in (0.236, 0.382, 0.5, 0.618, 0.786)}
+    return {"impulse": "вверх" if up else "вниз", "from": lo if up else hi, "to": hi if up else lo, "retracements": levels}
+
+
+def level_touches(candles: list[dict], level: float, tol_pct: float = 0.3) -> int:
+    """How many candles tested the level (wick within tolerance) — more touches, stronger/thinner level."""
+    tol = level * tol_pct / 100
+    return sum(1 for c in candles if c["l"] - tol <= level <= c["h"] + tol)
+
+
 def summarize_candles(candles: list[dict], tail: int = 12) -> dict:
     """Compact summary the LLM can read: indicators, levels, volume, delta."""
     if not candles:
@@ -123,7 +175,15 @@ def summarize_candles(candles: list[dict], tail: int = 12) -> dict:
         "atr14": a,
         "atr14_pct": round(a / price * 100, 2) if a and price else None,
         "levels": nearest_levels(price, lv),
+        "macd": macd(closes),
+        "bollinger20": bollinger(closes),
+        "fib_last_impulse": fib_last_impulse(candles),
         "last_volume_vs_median50": round(vols[-1] / vol_med, 2) if vol_med else None,
+    }
+    a_pct = (a / price * 100) if a and price else 0.3
+    out["level_touches"] = {
+        str(x): level_touches(candles, x, max(0.15, a_pct / 3))
+        for x in out["levels"]["resistance"] + out["levels"]["support"]
     }
     if all("taker_buy" in c for c in candles):
         deltas = [2 * c["taker_buy"] - c["v"] for c in candles]
