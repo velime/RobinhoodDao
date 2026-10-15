@@ -79,6 +79,14 @@ class TgStore:
         self.db.commit()
         return cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else len(rows)
 
+    def update_text(self, chat_id: int, msg_id: int, text: str, ts: float | None = None) -> None:
+        """An edited message (a pinned board the parsers keep up to date): newest text, and the edit time."""
+        self.db.execute(
+            "UPDATE tg_messages SET text=?, ts=MAX(ts, ?) WHERE chat_id=? AND msg_id=?",
+            (text, ts or 0, chat_id, msg_id),
+        )
+        self.db.commit()
+
     def set_image_text(self, chat_id: int, msg_id: int, text: str | None) -> None:
         """Save an image description, or count a failed attempt when text is None."""
         if text:

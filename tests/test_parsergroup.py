@@ -96,3 +96,148 @@ def test_exchange_flows_and_empty_states(tmp_path):
     assert "error" in pg.signals(None, [-1])
     quiet = pg.signals(st, [-100777])
     assert quiet["alerts"] == 0 and "ещё нет сообщений" in quiet["note"]
+
+
+BOARD = """🔀 Актуальные спреды · 17:11 UTC
+Одно закреплённое сообщение, обновляется само
+
+1. $WAL · фьюч↔фьюч · Gate фьюч → MEXC фьюч
+сейчас 3.21% · макс 3.40% · держится 14 мин · влезает ~$12.00K
+
+2. $XYZ · спот↔фьюч · MEXC спот → Gate фьюч
+сейчас 9.09% · макс 9.50% · держится 3 мин
+
+🧭 Индексы расходятся: FOO, BAR
+
+#SPREADBOARD"""
+
+
+def test_spread_board_rows_and_edits(tmp_path):
+    assert pg.is_board(BOARD) and pg.parse(BOARD) is None
+    rows = pg.parse_board(BOARD)
+    d = {r["base"]: r["data"] for r in rows}
+    assert set(d) == {"WAL", "XYZ", "FOO", "BAR"}
+    assert d["WAL"]["gross_pct"] == 3.21 and d["WAL"]["max_pct"] == 3.4 and d["WAL"]["held_min"] == 14
+    assert d["WAL"]["cheap"] == "Gate фьюч" and d["WAL"]["capacity"]["fits_usd"] == 12_000
+    assert d["XYZ"]["type"] == "spot_perp" and d["FOO"]["type"] == "index"
+
+    st = TgStore(str(tmp_path / "tg.db"))
+    now = time.time()
+    st.add_messages(-100500, [{"id": 1, "ts": now - 3600, "text": BOARD}])
+    st.update_text(-100500, 1, BOARD.replace("3.21%", "4.50%"), now)  # the parser edited the pinned message
+    got = pg.load_alerts(st, [-100500], hours=1)
+    wal = next(r for r in got if r["base"] == "WAL")
+    assert wal["data"]["gross_pct"] == 4.5 and wal["ts"] == now
+    top = pg.signals(st, [-100500], feed="spreads", symbol="WAL", hours=1)
+    assert top["recent"][0]["gross_pct"] == 4.5 and top["recent"][0]["max_pct"] == 3.4
+
+
+def test_rich_spreads_board_flattened_from_telegram_blocks(tmp_path):
+    """A bot's rich message arrives as page blocks, not as `message`: heading, paragraph, table, details."""
+    from telethon.tl import types as T
+
+    from bottom.tg.client import message_text, rich_plain
+
+    def cell(s):
+        return T.PageTableCell(text=T.TextBold(T.TextPlain(s)) if s.startswith("$") else T.TextPlain(s))
+
+    def row(*cs):
+        return T.PageTableRow([cell(c) for c in cs])
+
+    rm = T.RichMessage(blocks=[
+        T.PageBlockHeader(T.TextPlain("🔀 Актуальные спреды")),
+        T.PageBlockParagraph(T.TextConcat([T.TextPlain("Обновлено "), T.TextPlain("17:11 UTC"),
+                                           T.TextPlain(" · закреплено")])),
+        T.PageBlockTable(T.TextEmpty(), [
+            row("#", "Монета", "Тип", "Маршрут", "Сейчас", "Макс", "Держится, мин", "Влезает"),
+            row("1", "$WAL", "фьюч↔фьюч", "Gate фьюч → MEXC фьюч", "3.21%", "3.40%", "14", "$12.00K"),
+            row("2", "$XYZ", "спот↔фьюч", "MEXC спот → Gate фьюч", "9.09%", "9.50%", "3", "—")]),
+        T.PageBlockDetails([T.PageBlockParagraph(T.TextPlain("FOO, BAR"))], T.TextPlain("🧭 Индексы расходятся: 2")),
+        T.PageBlockParagraph(T.TextPlain("#SPREADBOARD")),
+    ], photos=[], documents=[])
+
+    class M:  # what Telethon hands the collector for a bot's rich message
+        message = ""
+        rich_message = rm
+
+    text = rich_plain(rm)
+    assert message_text(M()) == text
+    assert "1 | $WAL | фьюч↔фьюч | Gate фьюч → MEXC фьюч | 3.21% | 3.40% | 14 | $12.00K" in text
+    rows = {r["base"]: r["data"] for r in pg.parse_board(text)}
+    assert rows["WAL"]["gross_pct"] == 3.21 and rows["WAL"]["max_pct"] == 3.4 and rows["WAL"]["held_min"] == 14
+    assert rows["WAL"]["capacity"]["fits_usd"] == 12_000 and "capacity" not in rows["XYZ"]
+    assert rows["XYZ"]["type"] == "spot_perp" and {"FOO", "BAR"} <= set(rows)
+
+
+FF = """📊 #BRIC | Spread: 6.00% | +3.00%
+📌 BRIC_USDT (COPY: BRIC)
+
+🔴 Short MEXC : $1.0600
+🟢 Long  Gate : $1.0000
+
+🌗 Funding MEXC : -0.02%
+🌓 Funding Gate : -1.28%
+
+🔍 Доп. информация
+⏱ F/Interval MEXC : 4H
+⏱ F/Interval Gate : 4H
+💱 Перенос фандинга: +1.2600% за 8ч в твою пользу
+📦 Помещается ~$479, прибыль ~$20
+⛓ MEXC     BEP20 : Dep:🟢 | W/d:🟢
+0xF39e
+⛓ Gate     BSC : Dep:🟢 | W/d:🔴
+0xF39e
+
+📋 Цены на всех биржах:
+🔵 MEXC     : $1.0600
+⚪️ Gate     : $1.0000
+
+18:15 UTC
+#SPREAD #BRIC"""
+
+
+def test_detailed_futures_spread_message():
+    p = pg.parse(FF)
+    assert p["feed"] == "spreads" and p["base"] == "BRIC"
+    d = p["data"]
+    assert d["type"] == "perp_perp" and d["gross_pct"] == 6.0 and d["delta_pct"] == 3.0
+    assert d["dear"] == "MEXC" and d["cheap"] == "Gate" and d["short_price"] == 1.06 and d["long_price"] == 1.0
+    assert d["funding_pct"] == {"MEXC": -0.02, "Gate": -1.28} and d["funding_interval_h"]["Gate"] == 4
+    assert d["carry_8h_pct"] == 1.26 and d["capacity"]["fits_usd"] == 479
+    assert d["networks"][1] == {"ex": "Gate", "chain": "BSC", "deposit": True, "withdraw": False}
+    assert pg.parse(FF.replace("+3.00%", "NEW"))["data"].get("delta_pct") is None
+
+
+def test_spread_board_tool_returns_the_latest_board(tmp_path):
+    st = TgStore(str(tmp_path / "tg.db"))
+    now = time.time()
+    st.add_messages(-100500, [{"id": 1, "ts": now - 7200, "text": BOARD.replace("3.21%", "1.00%")},
+                              {"id": 2, "ts": now - 120, "text": BOARD}])
+    r = pg.spread_board(st, [-100500])
+    assert r["spreads"] == 2 and 1.5 < r["updated_min_ago"] < 3
+    first = r["rows"][0]
+    assert first["base"] == "XYZ" and first["now_pct"] == 9.09 and first["max_pct"] == 9.5  # biggest first
+    wal = next(x for x in r["rows"] if x["base"] == "WAL")
+    assert wal["now_pct"] == 3.21 and wal["buy_at"] == "Gate фьюч" and wal["fits_usd"] == 12_000
+    assert "rows" in pg.spread_board(st, [-100999]) and "error" in pg.spread_board(st, [])
+
+
+def test_index_feed_channel_is_parsed(tmp_path):
+    from bottom.tg.sources import Source
+    from bottom.tools import indexfeed
+
+    st = TgStore(str(tmp_path / "tg.db"))
+    st.sync_sources([Source(id=-100700, title="spread last index 5%", username="spread_last_index", kind="forum")])
+    now = time.time()
+    msg = "🔴 RTXUSDT · Aster\nSpread: +5.35% (last above index)\nHolding: 11s\nLast:  0.5772\nIndex: 0.5479"
+    msg2 = "🟢 ESIMUSDTM · KuCoin\nSpread: -10.34% (last below index)\nHolding: 17477s\nLast:  0.063284\nIndex: 0.070583"
+    st.add_messages(-100700, [{"id": 1, "ts": now - 600, "text": msg}, {"id": 2, "ts": now - 60, "text": msg2},
+                              {"id": 3, "ts": now - 30, "text": "просто текст"}])
+    p = indexfeed.parse(msg2)
+    assert p["base"] == "ESIM" and p["exchange"] == "KuCoin" and p["spread_pct"] == -10.34 and p["holding_s"] == 17477
+    top = indexfeed.index_spreads(st, hours=1)
+    assert top["events"] == 2 and top["top"][0]["base"] == "ESIM" and top["top"][0]["max_abs_pct"] == 10.34
+    one = indexfeed.index_spreads(st, "$rtx", 1)
+    assert one["events"] == 1 and one["by_exchange"]["Aster"]["max_abs_pct"] == 5.35
+    assert "note" in indexfeed.index_spreads(st, "NOPE", 1)
+    assert "не в источниках" in indexfeed.index_spreads(st, hours=1, source="missing")["note"]

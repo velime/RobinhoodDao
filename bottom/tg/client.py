@@ -44,6 +44,62 @@ def topic_of(m) -> int | None:
     return None
 
 
+def _rich_text(t) -> str:
+    """RichText (TextPlain, TextBold, TextConcat, ...) → plain string."""
+    if t is None:
+        return ""
+    if isinstance(t, str):
+        return t
+    texts = getattr(t, "texts", None)
+    if texts is not None:
+        return "".join(_rich_text(x) for x in texts)
+    return _rich_text(getattr(t, "text", None))
+
+
+def rich_plain(rm) -> str:
+    """Rich message (bot's tables, headings, lists, collapsible blocks) → plain text, one block per line.
+
+    Table rows are written as 'cell | cell | cell'; the parsers' board is recognised by that layout."""
+    out: list[str] = []
+
+    def walk(b) -> None:
+        rows = getattr(b, "rows", None)
+        if rows is not None:  # table
+            title = _rich_text(getattr(b, "title", None)).strip()
+            if title:
+                out.append(title)
+            for row in rows:
+                out.append(" | ".join(_rich_text(c.text).strip() for c in getattr(row, "cells", []) or []))
+            return
+        items = getattr(b, "items", None)
+        if items is not None:  # list
+            for it in items:
+                if getattr(it, "text", None) is not None:
+                    out.append("- " + _rich_text(it.text).strip())
+                for sub in getattr(it, "blocks", None) or []:
+                    walk(sub)
+            return
+        title = getattr(b, "title", None)
+        if title is not None and getattr(b, "blocks", None) is not None:  # details: summary, then content
+            out.append(_rich_text(title).strip())
+        text = getattr(b, "text", None)
+        if text is not None:
+            out.append(_rich_text(text).strip())
+        for sub in getattr(b, "blocks", None) or []:
+            walk(sub)
+
+    for b in getattr(rm, "blocks", None) or []:
+        walk(b)
+    return "\n".join(x for x in out if x)
+
+
+def message_text(m) -> str:
+    text = (getattr(m, "message", None) or "").strip()
+    if not text and getattr(m, "rich_message", None) is not None:
+        text = rich_plain(m.rich_message)
+    return text.strip()
+
+
 def has_image(m) -> bool:
     """Photo, or an image sent as a file (not stickers/GIFs)."""
     if getattr(m, "photo", None):
@@ -54,7 +110,7 @@ def has_image(m) -> bool:
 
 
 def to_row(m, author: str | None = None) -> dict | None:
-    text = (getattr(m, "message", None) or "").strip()
+    text = message_text(m)
     image = has_image(m)
     if len(text) < MIN_TEXT and not image:
         return None
@@ -174,6 +230,13 @@ class Collector:
         if row:
             self.live_count += self.store.add_messages(event.chat_id, [row])
 
+    async def on_edit(self, event) -> None:
+        m = event.message
+        text = message_text(m)
+        if text:
+            edited = getattr(m, "edit_date", None)
+            self.store.update_text(event.chat_id, m.id, text, edited.timestamp() if edited else None)
+
     async def sync_one(self, src: Source) -> int:
         """Everything newer than the last stored message; first time — backfill_days of history."""
         entity = self.entities[src.id]
@@ -277,6 +340,7 @@ class Collector:
         if not self.entities:
             raise RuntimeError("ни один источник недоступен аккаунту — проверь channels/sources.json")
         self.client.add_event_handler(self.on_message, events.NewMessage(chats=list(self.entities)))
+        self.client.add_event_handler(self.on_edit, events.MessageEdited(chats=list(self.entities)))
         self._tasks = [asyncio.create_task(self._loop()), asyncio.create_task(self._vision_loop())]
         log.info("Telegram: слушаю %d источников вживую, догрузка раз в %d мин", len(self.entities), self.resync_minutes)
 

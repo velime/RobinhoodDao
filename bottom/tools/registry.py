@@ -19,7 +19,7 @@ from . import websearch
 from .indicators import summarize_candles
 from .setup_calc import calc_setup, entry_status, stop_hunt_warnings
 from .ultra import ultra_alerts
-from . import oicard, onchain, parsergroup, spreads, transfers
+from . import indexfeed, oicard, onchain, parsergroup, spreads, transfers
 
 log = logging.getLogger(__name__)
 
@@ -247,6 +247,25 @@ class Toolbox:
             [], "📡 Смотрю наши сигналы",
             lambda feed="", symbol="", hours=24: asyncio.to_thread(
                 parsergroup.signals, self.tg_store, s.parser_chat_ids, feed, symbol, max(1, min(int(hours), 720))),
+        )
+        self._add(
+            "spread_board",
+            "Закреплённое сообщение парсера «Актуальные спреды» из его Telegram-группы: все открытые сейчас спреды "
+            "(фьюч↔фьюч, спот↔фьюч) со спредом сейчас, максимумом за время жизни, сколько минут держится и сколько "
+            "помещается в стакан. Для «какие спреды сейчас», «что в закрепе», «лучший спред».",
+            {}, [], "📌 Читаю закреп спредов",
+            lambda: asyncio.to_thread(parsergroup.spread_board, self.tg_store, s.parser_chat_ids),
+        )
+        self._add(
+            "index_spreads",
+            "Отклонение last-цены от индексной цены на фьючерсах 5%+ (канал @spread_last_index из Telegram): "
+            "без тикера — какие монеты чаще и сильнее отклонялись, с тикером — серия по биржам: сторона, процент, "
+            "сколько секунд держится, last и index. Для «индекс», «last-index», «отклонение от индекса».",
+            {"symbol": {"type": "string", "description": "Тикер; пусто — обзор"},
+             "hours": {"type": "integer", "description": "За сколько часов (по умолчанию 24)"}},
+            [], "🧭 Смотрю отклонение от индекса",
+            lambda symbol="", hours=24: asyncio.to_thread(
+                indexfeed.index_spreads, self.tg_store, symbol, max(1, min(int(hours), 720))),
         )
         self._add(
             "exchange_flows",

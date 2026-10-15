@@ -118,6 +118,11 @@ def write_live(settings, learner=None, hours: float = 6) -> None:
             lines.append(f"## {feed} — {len(fr)}")
             for r in fr[:25]:
                 age = round((time.time() - r["ts"]) / 60)
+                d = r["data"]
+                if d.get("board"):  # a row of the pinned spreads board, not a message of its own
+                    lines.append(f"- закреп, {age} мин назад: {r['base']} {d.get('cheap', '')} → {d.get('dear', '')} "
+                                 f"{d.get('gross_pct')}% (макс {d.get('max_pct')}%, {d.get('held_min')} мин)")
+                    continue
                 first = (r["text"] or "").split("\n")
                 lines.append(f"- {age} мин назад: " + " | ".join(x.strip() for x in first[:4] if x.strip())[:300])
             lines.append("")

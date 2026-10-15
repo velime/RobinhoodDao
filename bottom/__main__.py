@@ -67,7 +67,8 @@ async def main() -> None:
     logging.basicConfig(level=s.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("telethon").setLevel(logging.WARNING)
     if not s.telegram_token:
-        sys.exit("TELEGRAM_BOT_TOKEN не задан (см. .env.example)")
+        sys.exit("TELEGRAM_BOT_TOKEN не задан: start.bat запускает Telegram-бота и без токена не стартует.\n"
+                 "Без бота: tg_collect.bat (читает Telegram) + claude_chat.bat (разговор в Claude Code).")
     vision = make_vision(s)
     tg_store, collector = await start_telegram_collector(s, vision if vision.enabled else None)
     backend = make_backend(s)

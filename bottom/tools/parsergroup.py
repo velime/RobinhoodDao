@@ -85,7 +85,43 @@ def _funding(text: str) -> tuple[str | None, str | None, dict]:
     return base, None, data
 
 
+_FF_HEAD = re.compile(r"#([A-Z0-9]{1,15})\s*\|\s*Spread:\s*([\d.]+)%(?:\s*\|\s*(NEW|[+\-][\d.]+)%?)?")
+
+
+def _spread_ff(text: str) -> tuple[str | None, str | None, dict] | None:
+    """The detailed futures-futures message: '#BRIC | Spread: 6.00% | +3.00%', Short/Long legs, funding, networks."""
+    m = _FF_HEAD.search(text)
+    if not m:
+        return None
+    data: dict = {"type": "perp_perp", "gross_pct": float(m.group(2))}
+    if m.group(3) and m.group(3) != "NEW":
+        data["delta_pct"] = float(m.group(3))
+    if s := re.search(r"Short\s+(\S+)\s*:\s*\$([\d.]+)", text):
+        data["dear"], data["short_price"] = s.group(1), float(s.group(2))
+    if lg := re.search(r"Long\s+(\S+)\s*:\s*\$([\d.]+)", text):
+        data["cheap"], data["long_price"] = lg.group(1), float(lg.group(2))
+    fund = dict(re.findall(r"Funding\s+(\S+)\s*:\s*([+\-]?\d+(?:\.\d+)?)%", text))
+    if fund:
+        data["funding_pct"] = {k: float(v) for k, v in fund.items()}
+    ivl = dict(re.findall(r"F/Interval\s+(\S+)\s*:\s*(\d+(?:\.\d+)?)H", text))
+    if ivl:
+        data["funding_interval_h"] = {k: float(v) for k, v in ivl.items()}
+    if c := re.search(r"Перенос фандинга:\s*([+\-]?\d+(?:\.\d+)?)%", text):
+        data["carry_8h_pct"] = float(c.group(1))
+    if cap := re.search(r"Помещается\s*~(\$[\d.]+[KMB]?)(?:,\s*прибыль\s*~(\$[\d.]+[KMB]?))?", text):
+        data["capacity"] = {"fits_usd": money(cap.group(1)), "profit_usd": money(cap.group(2))}
+    nets = []
+    for n in re.finditer(r"⛓\s*(\S+)\s+(\S+)\s*:\s*Dep:(🟢|🔴|⚪)\s*\|\s*W/d:(🟢|🔴|⚪)", text):
+        nets.append({"ex": n.group(1), "chain": n.group(2), "deposit": n.group(3) == "🟢", "withdraw": n.group(4) == "🟢"})
+    if nets:
+        data["networks"] = nets
+    return m.group(1), None, data
+
+
 def _spread(text: str) -> tuple[str | None, str | None, dict]:
+    ff = _spread_ff(text)
+    if ff:
+        return ff
     head = re.search(r"([A-Z0-9]{2,15})\s*·\s*(фьюч↔фьюч|спот↔фьюч|проверка индексов)\s*([+\-−]?\d+(?:\.\d+)?)?%?", text)
     base = head.group(1) if head else None
     kind = {"фьюч↔фьюч": "perp_perp", "спот↔фьюч": "spot_perp"}.get(head.group(2) if head else "", "index")
@@ -163,6 +199,44 @@ def _status(text: str) -> tuple[str | None, str | None, dict]:
     return base, ex, {"changes": changes or [text.splitlines()[0]]}
 
 
+_BOARD_ROW = re.compile(
+    r"^\d+\.\s+\$?([A-Z0-9]{1,15})\s*·\s*(фьюч↔фьюч|спот↔фьюч)\s*·\s*(.+?)\s*→\s*(.+?)\s*\n"
+    r"сейчас\s+([\d.]+)%\s*·\s*макс\s+([\d.]+)%\s*·\s*держится\s+(\d+)\s*мин(?:\s*·\s*влезает\s*~(\$[\d.]+[KMB]?))?",
+    re.M)
+
+
+_BOARD_TABLE_ROW = re.compile(
+    r"^\d+\s*\|\s*\$?([A-Z0-9]{1,15})\s*\|\s*(фьюч↔фьюч|спот↔фьюч)\s*\|\s*(.+?)\s*→\s*(.+?)\s*\|\s*"
+    r"([\d.]+)%\s*\|\s*([\d.]+)%\s*\|\s*(\d+)\s*\|\s*(.*?)\s*$", re.M)
+
+
+def is_board(text: str) -> bool:
+    return "#SPREADBOARD" in text[-200:] or "Актуальные спреды" in text[:120]
+
+
+def parse_board(text: str) -> list[dict]:
+    """The pinned 'actual spreads' message → one alert per row (current %, max %, minutes held)."""
+    out = []
+    for m in _BOARD_ROW.finditer(text):
+        data = {"type": "perp_perp" if m.group(2) == "фьюч↔фьюч" else "spot_perp", "cheap": m.group(3),
+                "dear": m.group(4), "gross_pct": float(m.group(5)), "max_pct": float(m.group(6)),
+                "held_min": int(m.group(7)), "board": True}
+        if m.group(8):
+            data["capacity"] = {"fits_usd": money(m.group(8))}
+        out.append({"feed": "spreads", "base": m.group(1), "ex": None, "data": data})
+    for m in _BOARD_TABLE_ROW.finditer(text):  # the rich message flattened by the collector
+        data = {"type": "perp_perp" if m.group(2) == "фьюч↔фьюч" else "spot_perp", "cheap": m.group(3),
+                "dear": m.group(4), "gross_pct": float(m.group(5)), "max_pct": float(m.group(6)),
+                "held_min": int(m.group(7)), "board": True}
+        if m.group(8) and m.group(8) != "—":
+            data["capacity"] = {"fits_usd": money(m.group(8))}
+        out.append({"feed": "spreads", "base": m.group(1), "ex": None, "data": data})
+    if m := re.search(r"Индексы расходятся:\s*(.+(?:\n[A-Z0-9, ]+)?)", text):
+        for b in re.findall(r"[A-Z0-9]{1,15}", m.group(1)):
+            out.append({"feed": "spreads", "base": b, "ex": None, "data": {"type": "index", "board": True}})
+    return out
+
+
 def parse(text: str) -> dict | None:
     """One group message → {feed, base, ex, data} or None when it is not a parser alert."""
     feed = feed_of(text)
@@ -197,6 +271,9 @@ def load_alerts(store, chat_ids, hours: float = 24, limit: int = 3000) -> list[d
         [*ids, since, limit]).fetchall()
     out = []
     for ts, text in rows:
+        if is_board(text):
+            out += [{"ts": ts, "text": text, **p} for p in parse_board(text)]
+            continue
         p = parse(text)
         if p:
             out.append({"ts": ts, "text": text, **p})
@@ -319,3 +396,25 @@ def flows_summary(store, base: str, days: float = 30) -> dict:
                     {"hours_ago": round((time.time() - r["ts"]) / 3600, 1)}
                     for r in sorted(rows, key=lambda r: -r["usd"])[:8]],
     }
+
+
+def spread_board(store, chat_ids, hours: float = 12) -> dict:
+    """Tool: the pinned 'actual spreads' message as the parser last edited it — every row, with current and max %."""
+    if store is None:
+        return {"error": "Telegram-сборщик не подключён (TG_API_ID/TG_API_HASH) — закреп читать нечем"}
+    if not chat_ids:
+        return {"error": "группа парсеров не задана — впиши её id в PARSER_CHAT_ID"}
+    boards = [r for r in load_alerts(store, chat_ids, hours) if r["data"].get("board") and r["data"].get("type") != "index"]
+    if not boards:
+        return {"hours": hours, "rows": [], "note": "закрепа спредов в группе за период нет (парсер spreads не писал "
+                "или сборщик ещё не дошёл до группы)"}
+    last_ts = max(r["ts"] for r in boards)
+    rows = [r for r in boards if r["ts"] == last_ts]
+    rows.sort(key=lambda r: -r["data"]["gross_pct"])
+    return {"updated_min_ago": round((time.time() - last_ts) / 60, 1), "spreads": len(rows),
+            "rows": [{"base": r["base"], "type": r["data"]["type"], "buy_at": r["data"]["cheap"],
+                      "sell_at": r["data"]["dear"], "now_pct": r["data"]["gross_pct"], "max_pct": r["data"]["max_pct"],
+                      "held_min": r["data"]["held_min"], "fits_usd": (r["data"].get("capacity") or {}).get("fits_usd")}
+                     for r in rows],
+            "note": "now_pct — спред сейчас, max_pct — максимум за время, пока он держится без перерыва; "
+                    "данные парсера обновляются раз в ~3 минуты, перед выводом проверь цены (spread_check)"}
