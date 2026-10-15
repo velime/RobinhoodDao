@@ -17,7 +17,7 @@ import os
 from ..config import load_settings
 from .classify import CRYPTO, NOT_CRYPTO, REVIEW, UNAVAILABLE, Verdict
 from .client import LABELS, Collector, kind_of, load_dialogs, make_client, resolve, scan_source, verdict_label
-from .sources import Source, load_sources, save_sources
+from .sources import Source, load_sources, save_sources, with_parser_group
 from .store import TgStore
 
 LLM_CLASSIFIER = (
@@ -78,7 +78,7 @@ async def _connect(s, receive_updates: bool = False):
 
 
 def _sources(s) -> list[Source]:
-    src = load_sources(s.tg_sources_file)
+    src = with_parser_group(load_sources(s.tg_sources_file), s.parser_chat_ids)
     if not src:
         print(f"⚠️ Нет источников в {s.tg_sources_file}")
     return src

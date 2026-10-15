@@ -83,6 +83,7 @@ class Settings:
     tg_show_private: bool = False
     tg_backfill_days: int = 30  # 0 = whole channel history
     tg_keep_days: int = 180  # 0 = keep forever
+    parser_chat_ids: tuple[int, ...] = ()  # forum group(s) the standalone parsers post into
     learn_hour_utc: int = 3  # when to run the daily lessons review
     timezone: str = "Europe/Kyiv"
     db_path: str = "bottom.db"
@@ -136,6 +137,7 @@ def load_settings() -> Settings:
         tg_show_private=os.getenv("TG_SHOW_PRIVATE", "").lower() in ("1", "true", "yes"),
         tg_backfill_days=_int("TG_BACKFILL_DAYS", 30),
         tg_keep_days=_int("TG_KEEP_DAYS", 180),
+        parser_chat_ids=tuple(int(x) for x in _list("PARSER_CHAT_ID") if x.lstrip("-").isdigit()),
         learn_hour_utc=_int("LEARN_HOUR_UTC", 3),
         timezone=os.getenv("TIMEZONE", "Europe/Kyiv"),
         db_path=os.getenv("DB_PATH", "bottom.db"),

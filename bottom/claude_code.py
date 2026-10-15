@@ -3,7 +3,7 @@
 How it works:
 - claude_workspace/ is Claude's folder: CLAUDE.md (Bottom's rules + how to work there), .mcp.json (one entry
   that connects every Bottom tool through bottom.mcp_server), .claude/settings.json (what it may do),
-  live/ (files we keep fresh: our scanners' signals, latest Telegram posts, experience and lessons) and
+  live/ (files we keep fresh: parsers' signals, latest Telegram posts, experience and lessons) and
   inbox/ (pictures users send, for Claude to open).
 - The Telegram bot runs `claude -p` in that folder for each question (LLM_PROVIDER=claude_code) and streams
   its tool calls into the status line; the answer goes back to the chat. Setups and number checks work as
@@ -38,8 +38,8 @@ WEB_LABELS = {"WebSearch": "🌐 Ищу в интернете", "WebFetch": "�
 WORKSPACE_GUIDE = """
 # 11. Как работать в этой папке (Claude Code)
 - Все данные — через MCP-сервер `bottom` (инструменты mcp__bottom__*): биржи, деривативы, OI, спреды, \
-депозиты/выводы, ончейн-потоки, сигналы наших сканеров, Telegram-каналы, X, поиск. Цифры — только оттуда.
-- Свежие сводки в `live/` (обновляются ботом): `signals.md` — алерты наших сканеров за последние часы; \
+депозиты/выводы, ончейн-потоки, сигналы наших парсеров, Telegram-каналы, X, поиск. Цифры — только оттуда.
+- Свежие сводки в `live/` (обновляются ботом): `signals.md` — алерты наших парсеров за последние часы; \
 `telegram.md` — последние посты отслеживаемых каналов; `experience.md` — твоя статистика сетапов и уроки \
 (обязательны к исполнению, как раздел «Опыт»). Открывай нужный файл, когда вопрос про «что сейчас \
 происходит», сигналы, каналы — или перед сетапом (experience.md).
@@ -98,25 +98,29 @@ def write_live(settings, learner=None, hours: float = 6) -> None:
     live = os.path.join(WORKSPACE, "live")
     os.makedirs(live, exist_ok=True)
     stamp = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
-    lines = [f"# Сигналы наших сканеров за {hours:g}ч (на {stamp})", ""]
-    path = os.getenv("SIGNALS_DB", "data/signals.db")
-    if os.path.exists(os.path.join(ROOT, path) if not os.path.isabs(path) else path):
-        from .signals.store import SignalStore
+    lines = [f"# Алерты наших парсеров за {hours:g}ч (на {stamp})", ""]
+    db = settings.db_path if os.path.isabs(settings.db_path) else os.path.join(ROOT, settings.db_path)
+    if not settings.parser_chat_ids:
+        lines.append("группа парсеров не задана (PARSER_CHAT_ID)")
+    elif not os.path.exists(db):
+        lines.append("Telegram-сборщик ещё не создал базу сообщений")
+    else:
+        from .tg.store import TgStore
+        from .tools import parsergroup
 
-        st = SignalStore(os.path.join(ROOT, path) if not os.path.isabs(path) else path)
-        rows = st.alerts(hours=hours, limit=150)
-        for feed in ("oi", "funding", "spreads", "flows", "dex", "status"):
+        rows = parsergroup.load_alerts(TgStore(db), settings.parser_chat_ids, hours=hours, limit=300)
+        if not rows:
+            lines.append("из группы парсеров за период алертов нет")
+        for feed in parsergroup.FEEDS:
             fr = [r for r in rows if r["feed"] == feed]
             if not fr:
                 continue
             lines.append(f"## {feed} — {len(fr)}")
             for r in fr[:25]:
                 age = round((time.time() - r["ts"]) / 60)
-                first = (r["text"] or "").replace("<b>", "").replace("</b>", "").split("\n")
-                lines.append(f"- {age} мин назад: " + " | ".join(x for x in first[:4] if x.strip())[:300])
+                first = (r["text"] or "").split("\n")
+                lines.append(f"- {age} мин назад: " + " | ".join(x.strip() for x in first[:4] if x.strip())[:300])
             lines.append("")
-    else:
-        lines.append("сканеры не запущены (нет data/signals.db)")
     _write(os.path.join(live, "signals.md"), lines)
 
     tg = [f"# Последние посты Telegram-источников (на {stamp})", ""]

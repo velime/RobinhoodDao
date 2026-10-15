@@ -3,7 +3,7 @@
     python -m bottom.mcp_server
 
 Claude Code starts it from claude_workspace/.mcp.json, so "connect everything" is one entry: exchanges, OI,
-spreads, transfers, on-chain flows, our scanners' signals, Telegram channels (read from the collector's db),
+spreads, transfers, on-chain flows, the parsers' signals (read from their Telegram group), Telegram channels (read from the collector's db),
 X and web search. JSON-RPC 2.0, one message per line; logs go to stderr only.
 """
 
@@ -48,7 +48,7 @@ class Server:
                           "capabilities": {"tools": {"listChanged": False}},
                           "serverInfo": {"name": "bottom", "version": "0.2.0"},
                           "instructions": "Инструменты крипто-ресерчера Bottom: биржи, деривативы, OI, спреды, "
-                                          "депозиты/выводы, ончейн-потоки, сигналы сканеров, Telegram, X, интернет."}
+                                          "депозиты/выводы, ончейн-потоки, сигналы парсеров, Telegram, X, интернет."}
             elif method == "ping":
                 result = {}
             elif method == "tools/list":

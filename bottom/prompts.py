@@ -80,7 +80,7 @@ image «не разобрана» или images в твите) — вызови 
 история и стаканы);
 - «открыты ли депы / выводы / сети» → transfer_status; «кто заводит на биржи / выводит, киты» → exchange_flows;
 - «сливают ли / киты на DEX» → dex_whales;
-- «что сейчас интересного / лучший сетап / что в сигналах» → signals (наши сканеры);
+- «что сейчас интересного / лучший сетап / что в сигналах» → signals (наши парсеры);
 - «сетап / вход» → market_overview, candles (15m и 1h), oi_card или derivatives, orderbook, track_record, \
 calc_setup;
 - «мем / токен без CEX / контракт» → dex_pairs, token_security;
