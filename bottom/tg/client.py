@@ -114,7 +114,8 @@ def to_row(m, author: str | None = None) -> dict | None:
     image = has_image(m)
     if len(text) < MIN_TEXT and not image:
         return None
-    date = m.date if m.date.tzinfo else m.date.replace(tzinfo=timezone.utc)
+    date = getattr(m, "edit_date", None) or m.date  # an edited message (the pinned board) is as fresh as its edit
+    date = date if date.tzinfo else date.replace(tzinfo=timezone.utc)
     return {
         "id": m.id,
         "ts": date.timestamp(),

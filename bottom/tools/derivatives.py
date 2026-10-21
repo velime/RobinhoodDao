@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from . import http
 from .exchanges import ExchangePool, find_market
@@ -20,6 +21,7 @@ BINANCE_F = "https://fapi.binance.com"
 BINANCE_S = "https://api.binance.com"
 BYBIT = "https://api.bybit.com"
 OKX = "https://www.okx.com"
+ASTER_F = "https://fapi.asterdex.com"
 
 
 def _changes(series: list[tuple[int, float]]) -> dict:
@@ -113,6 +115,42 @@ async def _bybit(market_id: str) -> dict:
     return out
 
 
+_aster_intervals: dict = {"ts": 0.0, "data": {}}
+
+
+async def _aster(symbol: str) -> dict:
+    """Aster: funding now / interval / last payments, mark-index premium, open interest (all public)."""
+    prem, oi, hist = await asyncio.gather(
+        http.get_json(f"{ASTER_F}/fapi/v1/premiumIndex", {"symbol": symbol}),
+        http.get_json(f"{ASTER_F}/fapi/v1/openInterest", {"symbol": symbol}),
+        http.get_json(f"{ASTER_F}/fapi/v1/fundingRate", {"symbol": symbol, "limit": 8}),
+        return_exceptions=True,
+    )
+    out: dict = {"exchange": "aster", "symbol": symbol}
+    if isinstance(prem, dict):
+        if prem.get("lastFundingRate") is not None:
+            out["funding_now_pct"] = round(float(prem["lastFundingRate"]) * 100, 4)
+        mark, index = float(prem.get("markPrice") or 0), float(prem.get("indexPrice") or 0)
+        if mark and index:
+            out["mark_index_premium_pct"] = round((mark - index) / index * 100, 3)
+        if prem.get("nextFundingTime"):
+            out["next_funding_in_min"] = round((int(prem["nextFundingTime"]) / 1000 - time.time()) / 60)
+        if mark and isinstance(oi, dict) and oi.get("openInterest"):
+            out["oi_usd_now"] = round(float(oi["openInterest"]) * mark)
+    now = time.time()
+    if now - _aster_intervals["ts"] > 3600:
+        try:
+            info = await http.get_json(f"{ASTER_F}/fapi/v1/fundingInfo")
+            _aster_intervals.update(ts=now, data={i["symbol"]: i.get("fundingIntervalHours") for i in info})
+        except Exception:  # noqa: BLE001
+            pass
+    if _aster_intervals["data"].get(symbol):
+        out["funding_interval_hours"] = _aster_intervals["data"][symbol]
+    if isinstance(hist, list) and hist:
+        out["last_payments_pct"] = [round(float(x["fundingRate"]) * 100, 4) for x in hist[-5:]]
+    return out if len(out) > 2 else {}
+
+
 async def _okx(base_ccy: str) -> dict:
     r = await http.get_json(
         f"{OKX}/api/v5/rubik/stat/contracts/long-short-account-ratio", {"ccy": base_ccy, "period": "1H"}
@@ -171,7 +209,11 @@ async def derivatives(pool: ExchangePool, raw_symbol: str) -> dict:
     ok_m = find_market(ok, base, "perp") if ok else None
     if ok_m:
         tasks.append(_okx(ok_m[0]["base"]))
-    others = [ex for ex in await pool.all() if ex.id not in ("binance", "bybit")]
+    asr = await pool.get("aster")
+    asr_m = find_market(asr, base, "perp") if asr else None
+    if asr_m:
+        tasks.append(_aster(asr_m[0]["id"]))
+    others = [ex for ex in await pool.all() if ex.id not in ("binance", "bybit", "aster")]
     tasks += [_ccxt_funding_oi(ex, base) for ex in others]
 
     res = await asyncio.gather(*tasks, return_exceptions=True)

@@ -241,3 +241,54 @@ def test_index_feed_channel_is_parsed(tmp_path):
     assert one["events"] == 1 and one["by_exchange"]["Aster"]["max_abs_pct"] == 5.35
     assert "note" in indexfeed.index_spreads(st, "NOPE", 1)
     assert "не в источниках" in indexfeed.index_spreads(st, hours=1, source="missing")["note"]
+
+
+def test_awtrader_tools(monkeypatch):
+    import asyncio
+
+    from bottom.tools import awtrader as aw
+
+    def side(ex, ask=None, bid=None, rate=0.01, iv=8.0):
+        return {"ex": ex, "sym": "CATEUSDT", "ask": ask, "bid": bid, "vol": 123456.7,
+                "f": {"rate": rate, "iv": iv, "next": 1792339200}, "liq": None}
+
+    spreads_resp = {"rows": [
+        {"b": "CATE", "sp": 4.09, "n": 4, "odd": False, "buy": side("aster", ask=0.0733, rate=0.026, iv=1.0),
+         "sell": side("lbank", bid=0.0763, rate=0.012, iv=4.0)},
+        {"b": "ZC", "sp": 2.4, "n": 3, "odd": False, "buy": side("bingx", ask=0.00167), "sell": side("mexc", bid=0.00171)}]}
+    funding_resp = {"exchanges": ["binance", "aster", "lbank"], "ts": 1792335600, "rows": [
+        {"b": "CATE", "r": [0.01, 0.026, 0.012], "i": [8, 1, 4], "n": [1792339200, 1792339200, 1792339200],
+         "s": ["CATEUSDT"] * 3},
+        {"b": "BTC", "r": [0.009, None, 0.008], "i": [8, None, 8], "n": [None] * 3, "s": ["BTCUSDT"] * 3}]}
+    calls = []
+
+    async def fake_get(path, params=None):
+        calls.append((path, params))
+        return spreads_resp if path == "spreads" else funding_resp
+
+    monkeypatch.setattr(aw, "_get", fake_get)
+    aw._cache.clear()
+    r = asyncio.run(aw.spreads(min_spread=1.0, limit=10))
+    assert r["found"] == 2 and r["spreads"][0]["coin"] == "CATE"
+    top = r["spreads"][0]
+    assert top["buy_long"] == {"exchange": "aster", "ask": 0.0733, "funding_pct": 0.026, "interval_h": 1.0,
+                               "funding_8h_pct": 0.208, "vol24_usd": 123457, "liquidity_usd": None}
+    assert top["sell_short"]["exchange"] == "lbank" and top["carry_8h_pct"] == round(0.024 - 0.208, 4)
+    assert asyncio.run(aw.spreads(exchange="mexc"))["spreads"][0]["coin"] == "ZC"
+    assert asyncio.run(aw.spreads(symbol="$cate"))["found"] == 1
+    assert "нет" in asyncio.run(aw.spreads(symbol="NOPE"))["note"]
+    assert [c[0] for c in calls] == ["spreads"]  # the three questions above shared one request
+
+    one = asyncio.run(aw.funding("cate"))
+    assert one["highest"] == "aster" and one["lowest"] == "binance" and one["gap_8h_pct"] == round(0.208 - 0.01, 4)
+    assert one["exchanges"][0]["next_in_min"] == 60 and "шорт на aster" in one["idea"]
+    market = asyncio.run(aw.funding(top=5, min_exchanges=2))
+    assert market["most_extreme"][0]["coin"] == "CATE" and market["most_extreme"][0]["extreme"]["exchange"] == "aster"
+    assert [c[0] for c in calls] == ["spreads", "funding"]
+
+    async def boom(path, params=None):
+        raise RuntimeError("503")
+
+    monkeypatch.setattr(aw, "_get", boom)
+    aw._cache.clear()
+    assert "spread_check" in asyncio.run(aw.spreads())["error"] and "derivatives" in asyncio.run(aw.funding())["error"]

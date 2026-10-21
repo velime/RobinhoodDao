@@ -30,6 +30,8 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+rem Фоновый сборщик Telegram наполняет базу, пока открыт чат (если он уже запущен - второй сам закроется).
+start "Bottom collector" /min cmd /c "python -m bottom.tg collect"
 cd claude_workspace
 echo Bottom в Claude Code: спрашивай как в Telegram. Все инструменты подключены (биржи, каналы, X, интернет, сигналы).
 echo.

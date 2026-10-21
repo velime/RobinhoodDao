@@ -19,7 +19,7 @@ from . import websearch
 from .indicators import summarize_candles
 from .setup_calc import calc_setup, entry_status, stop_hunt_warnings
 from .ultra import ultra_alerts
-from . import indexfeed, oicard, onchain, parsergroup, spreads, transfers
+from . import awtrader, indexfeed, oicard, onchain, parsergroup, spreads, transfers
 
 log = logging.getLogger(__name__)
 
@@ -208,6 +208,32 @@ class Toolbox:
             "паттерн, сценарий, комбинации 1–10, красные флаги. Для вопросов про OI, сквиз, «кто заходит».",
             {"symbol": SYM}, ["symbol"], "📈 Считаю OI",
             lambda symbol: oicard.oi_card(exch.normalize_base(symbol), s.coingecko_api_key),
+        )
+        self._add(
+            "awtrader_spreads",
+            "ОСНОВНОЙ источник для «какие спреды сейчас / лучший спред / где расхождение цен»: все фьючерс-фьючерс "
+            "спреды рынка разом по 12 биржам (Binance, Bybit, OKX, Gate, Bitget, MEXC, KuCoin, BingX, LBank, Aster, "
+            "Hyperliquid, Lighter) с исполнимыми ценами (buy по ask, sell по bid), фандингом и интервалом обеих сторон, "
+            "переносом, оборотом. Фильтры: symbol, exchange, min_spread. Стаканы, статусы сетей и индексы тут не "
+            "проверены: по выбранной монете затем spread_check.",
+            {"symbol": {"type": "string", "description": "Тикер; пусто — весь рынок"},
+             "min_spread": {"type": "number", "description": "Минимальный спред, % (по умолчанию 1)"},
+             "exchange": {"type": "string", "description": "Только спреды с участием этой биржи, например aster"},
+             "limit": {"type": "integer", "description": "Сколько строк (по умолчанию 15)"}},
+            [], "🔀 Беру спреды рынка (awtrader)",
+            lambda symbol="", min_spread=1.0, exchange="", limit=15: awtrader.spreads(
+                symbol, max(0.1, float(min_spread)), max(1, min(int(limit), 50)), exchange),
+        )
+        self._add(
+            "funding_rates",
+            "ОСНОВНОЙ источник по фандингу: таблица по 13 биржам разом (Binance, Bybit, OKX, Gate, Bitget, MEXC, "
+            "KuCoin, BingX, Phemex, Aster, Hyperliquid, Lighter, LBank): ставка за интервал, интервал, пересчёт на 8 "
+            "часов, минут до выплаты. С тикером — по всем биржам монеты и дельта-нейтральная идея; без тикера — самые "
+            "экстремальные ставки рынка и самый большой разрыв между биржами. История выплат и OI — derivatives.",
+            {"symbol": {"type": "string", "description": "Тикер; пусто — обзор рынка"},
+             "top": {"type": "integer", "description": "Сколько монет в обзоре (по умолчанию 15)"}},
+            [], "💸 Беру фандинг рынка (awtrader)",
+            lambda symbol="", top=15: awtrader.funding(symbol, max(1, min(int(top), 40))),
         )
         self._add(
             "spread_check",

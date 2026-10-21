@@ -58,7 +58,7 @@ def with_parser_group(sources: list[Source], chat_ids) -> list[Source]:
     have = {s.id for s in sources}
     extra = [Source(id=int(i), title="Парсеры", kind="forum", enabled=True, manual=True, verdict="crypto")
              for i in chat_ids if int(i) not in have]
-    return sources + extra
+    return extra + sources  # first: the group is small and what the spreads tools need most
 
 
 def save_sources(path: str, sources: list[Source]) -> None:

@@ -211,3 +211,42 @@ class SimpleNamespaceTool:
     name = "echo"
     description = "echo"
     parameters = {"type": "object", "properties": {"x": {"type": "integer"}}}
+
+
+async def test_aster_feeds_and_derivatives(monkeypatch):
+    from bottom.tools import derivatives as dv
+    from bottom.tools import feeds as fd
+
+    async def fake(url, params=None, headers=None):
+        if url.endswith("/fapi/v1/premiumIndex") and not params:
+            return [{"symbol": "XAUUSDT", "markPrice": "4160.7", "indexPrice": "4161.0", "lastFundingRate": "0.00005",
+                     "nextFundingTime": 1792339200000}, {"symbol": "BTCUSD1", "markPrice": "1"}]
+        if url.endswith("/fapi/v1/ticker/24hr"):
+            return [{"symbol": "XAUUSDT", "lastPrice": "4160.72", "quoteVolume": "430000"}]
+        if url.endswith("/fapi/v1/fundingInfo"):
+            return [{"symbol": "XAUUSDT", "fundingIntervalHours": 4}, {"symbol": "BTCUSDT", "fundingIntervalHours": 8}]
+        if url.endswith("/api/v1/ticker/24hr"):
+            return [{"symbol": "ABCUSDT", "lastPrice": "2", "quoteVolume": "50", "quoteAsset": "USDT"},
+                    {"symbol": "ABCUSD1", "lastPrice": "2", "quoteVolume": "5", "quoteAsset": "USD1"}]
+        if url.endswith("/fapi/v1/premiumIndex"):
+            return {"symbol": "BTCUSDT", "markPrice": "81000", "indexPrice": "81040", "lastFundingRate": "0.00006",
+                    "nextFundingTime": 4102444800000}
+        if url.endswith("/fapi/v1/openInterest"):
+            return {"symbol": "BTCUSDT", "openInterest": "5000"}
+        if url.endswith("/fapi/v1/fundingRate"):
+            return [{"fundingRate": "0.0001"}, {"fundingRate": "0.00006"}]
+        raise AssertionError(url)
+
+    monkeypatch.setattr(fd.http, "get_json", fake)
+    monkeypatch.setattr(dv.http, "get_json", fake)
+    perp = await fd.aster_perp()
+    assert [(r["ex"], r["base"], r["price"], r["interval_h"], r["funding_pct"]) for r in perp] == [
+        ("aster", "XAU", 4160.72, 4, 0.005)]  # USD1-quoted contracts are skipped
+    assert perp[0]["vol24_usd"] == 430000 and perp[0]["index"] == 4161.0
+    spot = await fd.aster_spot()
+    assert [(r["base"], r["kind"]) for r in spot] == [("ABC", "spot")]
+    assert ("aster", "perp") in fd.FETCHERS and ("aster", "spot") in fd.FETCHERS
+    dv._aster_intervals.update(ts=0.0, data={})
+    a = await dv._aster("BTCUSDT")
+    assert a["funding_now_pct"] == 0.006 and a["oi_usd_now"] == 5000 * 81000 and a["funding_interval_hours"] == 8
+    assert a["mark_index_premium_pct"] == -0.049 and a["last_payments_pct"] == [0.01, 0.006]

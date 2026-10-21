@@ -299,6 +299,40 @@ async def hyperliquid_perp() -> list[dict]:
     return out
 
 
+ASTER_F = "https://fapi.asterdex.com"
+ASTER_S = "https://sapi.asterdex.com"
+
+
+async def aster_perp() -> list[dict]:
+    """Aster futures (Binance-compatible API): mark/index/funding bulk + 24h volume + funding intervals."""
+    prem, tick, info = await asyncio.gather(
+        http.get_json(f"{ASTER_F}/fapi/v1/premiumIndex"),
+        http.get_json(f"{ASTER_F}/fapi/v1/ticker/24hr"),
+        http.get_json(f"{ASTER_F}/fapi/v1/fundingInfo"),
+        return_exceptions=True,
+    )
+    if isinstance(prem, Exception):
+        raise prem
+    last = {t["symbol"]: t for t in tick} if isinstance(tick, list) else {}
+    ivl = {i["symbol"]: i.get("fundingIntervalHours") for i in info} if isinstance(info, list) else {}
+    out = []
+    for p in prem:
+        s = p["symbol"]
+        t = last.get(s) or {}
+        r = _row("aster", "perp", s, t.get("lastPrice") or p.get("markPrice"), funding=p.get("lastFundingRate"),
+                 interval_h=ivl.get(s, 8), next_ms=p.get("nextFundingTime"), vol=t.get("quoteVolume"),
+                 mark=p.get("markPrice"), index=p.get("indexPrice"))
+        if r:
+            out.append(r)
+    return out  # Aster has no bulk OI; per-coin OI comes from derivatives
+
+
+async def aster_spot() -> list[dict]:
+    data = await http.get_json(f"{ASTER_S}/api/v1/ticker/24hr")
+    return [r for t in data if t.get("quoteAsset") == "USDT"
+            and (r := _row("aster", "spot", t["symbol"], t.get("lastPrice"), vol=t.get("quoteVolume")))]
+
+
 FETCHERS = {
     ("binance", "perp"): binance_perp, ("binance", "spot"): binance_spot,
     ("bybit", "perp"): bybit_perp, ("bybit", "spot"): bybit_spot,
@@ -309,6 +343,7 @@ FETCHERS = {
     ("kucoin", "perp"): kucoin_perp, ("kucoin", "spot"): kucoin_spot,
     ("bingx", "perp"): bingx_perp,
     ("hyperliquid", "perp"): hyperliquid_perp,
+    ("aster", "perp"): aster_perp, ("aster", "spot"): aster_spot,
 }
 
 

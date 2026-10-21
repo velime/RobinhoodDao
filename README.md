@@ -36,7 +36,7 @@
 | Инструмент | Что делает | Источник |
 |---|---|---|
 | `resolve_token` | какой именно токен (защита от однофамильцев) | CoinGecko |
-| `market_overview` | цены спот/перп на 9 биржах, базис, разброс | ccxt |
+| `market_overview` | цены спот/перп на 10 биржах (включая Aster), базис, разброс | ccxt |
 | `derivatives` | фандинг, OI и его динамика, лонги/шорты, taker flow | Binance, Bybit, OKX + ccxt |
 | `candles` | 1m–1d: EMA, RSI, Stoch, ATR, MACD, Боллинджер, Фибоначчи импульса, уровни и число их тестов, дельта/CVD, объём | Binance / ccxt |
 | `spot_perp_flow` | кто ведёт движение: чистые покупки на споте и перпе за 1ч/4ч (аналог A/D из Ultra) | Binance |

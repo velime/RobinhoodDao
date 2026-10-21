@@ -119,7 +119,7 @@ def load_settings() -> Settings:
         daily_steps_per_user=_int("DAILY_STEPS_PER_USER", 50),
         admin_ids=tuple(int(x) for x in _list("ADMIN_IDS")),
         exchanges=tuple(
-            _list("EXCHANGES", "binance,bybit,okx,bitget,gate,mexc,kucoin,bingx,hyperliquid")
+            _list("EXCHANGES", "binance,bybit,okx,bitget,gate,mexc,kucoin,bingx,hyperliquid,aster")
         ),
         coingecko_api_key=os.getenv("COINGECKO_API_KEY", ""),
         tavily_api_key=os.getenv("TAVILY_API_KEY", ""),

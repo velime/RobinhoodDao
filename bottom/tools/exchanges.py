@@ -23,6 +23,7 @@ MARKET_TYPES = {
     "okx": ["spot", "swap"],
     "gate": ["spot", "swap"],
     "kucoin": ["spot", "swap"],
+    "aster": ["spot", "swap"],
 }
 
 
@@ -198,7 +199,7 @@ def _book_stats(book: dict, mid: float, mult: int) -> dict:
 
 async def orderbook(pool: ExchangePool, raw_symbol: str, market: str = "perp", exchange: str | None = None) -> dict:
     base = normalize_base(raw_symbol)
-    order = [exchange] if exchange else ["binance", "bybit", "okx", "bitget", "gate", "mexc"]
+    order = [exchange] if exchange else ["binance", "bybit", "okx", "bitget", "gate", "mexc", "aster"]
     for ex_id in order:
         ex = await pool.get(ex_id)
         if not ex:
