@@ -24,10 +24,10 @@ async def start_telegram_collector(s: Settings, vision):
     if not (s.tg_api_id and s.tg_api_hash):
         return None, None
     from .tg.client import Collector, make_client
-    from .tg.sources import load_sources
+    from .tg.sources import load_all
     from .tg.store import TgStore
 
-    sources = load_sources(s.tg_sources_file)
+    sources = load_all(s.tg_sources_file)
     if not sources:
         log.warning("Telegram: нет источников в %s", s.tg_sources_file)
         return None, None

@@ -19,3 +19,6 @@ claude_workspace/inbox/
 agy_workspace/
 # Telegram exports for self-training (python -m bottom.selftrain)
 references/*.json
+# your own private Telegram channels and chats, and the scan report that names them
+channels/private.json
+channels/report.md

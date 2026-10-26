@@ -54,9 +54,10 @@ def test_cashtags():
 
 def test_repo_sources_file():
     src = load_sources("channels/sources.json")
-    assert len(src) == 195 and len({s.id for s in src}) == 195
-    assert sum(s.public for s in src) == 160 and sum(not s.public for s in src) == 35
-    assert {s.kind for s in src} == {"channel", "group", "forum"}
+    assert len(src) == 161 and len({s.id for s in src}) == 161
+    # the repository holds public channels only (Durov's channel is listed by id); private chats live in private.json
+    assert sum(not s.public for s in src) == 1 and {s.kind for s in src} == {"channel", "forum"}
+    assert -1002797401414 not in {s.id for s in src}  # the former parsers' group
     news = [s for s in src if s.title in ("Павел Дуров", "Pavel Durov", "MarketTwits", "Walter Bloomberg")]
     assert len(news) == 4 and all(s.enabled and s.manual for s in news)  # scan must not switch them off
 
@@ -72,6 +73,41 @@ def test_sources_roundtrip_keeps_unknown_fields(tmp_path):
     save_sources(str(p), src)
     raw = json.loads(p.read_text(encoding="utf-8"))["sources"][0]
     assert raw["custom"] == 5 and raw["username"] == "a"
+
+
+def test_public_and_private_files(tmp_path):
+    from bottom.tg.sources import load_all, private_path, save_all
+
+    pub, priv = tmp_path / "sources.json", tmp_path / "private.json"
+    pub.write_text(json.dumps({"sources": [{"id": -1, "title": "pub", "username": "p", "public": True}]}), encoding="utf-8")
+    priv.write_text(json.dumps({"sources": [{"id": -2, "title": "secret chat"}, {"id": -1, "title": "dup"}]}),
+                    encoding="utf-8")
+    src = load_all(str(pub))
+    assert [s.title for s in src] == ["pub", "secret chat"] and private_path(str(pub)) == str(priv)
+    src.append(Source(id=-3, title="found in the account", username="newpub", public=True, enabled=False))
+    save_all(str(pub), src)
+    assert [x["id"] for x in json.loads(pub.read_text(encoding="utf-8"))["sources"]] == [-1]
+    assert [x["id"] for x in json.loads(priv.read_text(encoding="utf-8"))["sources"]] == [-2, -3]
+    assert "origin" not in json.loads(priv.read_text(encoding="utf-8"))["sources"][0]
+
+
+def test_restore_private(tmp_path, capsys):
+    from types import SimpleNamespace
+
+    from bottom.tg.__main__ import cmd_restore_private
+
+    pub = tmp_path / "sources.json"
+    pub.write_text(json.dumps({"sources": [{"id": -1, "title": "pub", "public": True}]}), encoding="utf-8")
+    old = tmp_path / "old.json"
+    old.write_text(json.dumps({"sources": [{"id": -1, "title": "pub", "public": True},
+                                           {"id": -2, "title": "arty private"},
+                                           {"id": -1002797401414, "title": "PARSER"}]}), encoding="utf-8")
+    cmd_restore_private(SimpleNamespace(tg_sources_file=str(pub)), SimpleNamespace(from_file=str(old)))
+    priv = json.loads((tmp_path / "private.json").read_text(encoding="utf-8"))["sources"]
+    assert [x["id"] for x in priv] == [-2]  # public ones and the old parsers' group stay out
+    cmd_restore_private(SimpleNamespace(tg_sources_file=str(pub)), SimpleNamespace(from_file=str(old)))
+    assert len(json.loads((tmp_path / "private.json").read_text(encoding="utf-8"))["sources"]) == 1
+    assert "добавлено 0" in capsys.readouterr().out
 
 
 def test_links():

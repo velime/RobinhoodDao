@@ -4,6 +4,8 @@
   python -m bottom tg scan [опции]       — один раз проверить источники: крипта или нет
   python -m bottom tg collect [--once]   — собирать сообщения без бота (--once: только догрузить и выйти)
   python -m bottom tg search [ТИКЕР]     — посмотреть, что собрано (упоминания тикера / что обсуждают)
+  python -m bottom tg restore-private    — вернуть свои приватные каналы и чаты в channels/private.json
+                                           из прежнего общего списка (он остался в истории git)
 """
 
 from __future__ import annotations
@@ -13,12 +15,17 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
+import tempfile
 
 from ..config import load_settings
 from .classify import CRYPTO, NOT_CRYPTO, REVIEW, UNAVAILABLE, Verdict
 from .client import LABELS, Collector, kind_of, load_dialogs, make_client, resolve, scan_source, verdict_label
-from .sources import Source, load_sources, save_sources
+from .sources import Source, load_all, load_sources, private_path, save_all, save_sources
 from .store import TgStore
+
+OLD_FULL_LIST = "5b7fd39"  # the last commit where channels/sources.json held public and private sources together
+OLD_PARSERS_GROUP = -1002797401414  # the former parsers' forum: no longer a source
 
 LLM_CLASSIFIER = (
     "Ты классифицируешь Telegram-каналы и чаты. Ответь одним словом: CRYPTO — если источник в основном о "
@@ -78,7 +85,7 @@ async def _connect(s, receive_updates: bool = False):
 
 
 def _sources(s) -> list[Source]:
-    src = load_sources(s.tg_sources_file)
+    src = load_all(s.tg_sources_file)
     if not src:
         print(f"⚠️ Нет источников в {s.tg_sources_file}")
     return src
@@ -182,7 +189,7 @@ async def cmd_scan(s, args) -> None:
         await asyncio.sleep(1.0)
     await client.disconnect()
 
-    save_sources(s.tg_sources_file, sources)
+    save_all(s.tg_sources_file, sources)
     write_report(args.report, items)
     on = sum(1 for x in sources if x.enabled)
     print(f"\n✅ Будет читаться {on} из {len(sources)}. Список: {s.tg_sources_file} · отчёт: {args.report}")
@@ -205,6 +212,34 @@ async def cmd_collect(s, args) -> None:
         return
     print("Слушаю источники. Новые сообщения сохраняются сразу. Остановить — Ctrl+C или закрыть окно.")
     await client.run_until_disconnected()
+
+
+def cmd_restore_private(s, args) -> None:
+    """Private sources of the old combined list → channels/private.json (known ids are kept as they are)."""
+    if args.from_file:
+        old = load_sources(args.from_file)
+    else:
+        from ..config import ROOT
+
+        r = subprocess.run(["git", "show", f"{OLD_FULL_LIST}:channels/sources.json"], cwd=ROOT,
+                           capture_output=True, text=True, encoding="utf-8")
+        if r.returncode != 0:
+            print(f"Не нашёл прежний список в истории git ({r.stderr.strip()[:200]}). Укажи файл: --from old.json")
+            return
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "old.json")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(r.stdout)
+            old = load_sources(p)
+    public = {x.id for x in load_sources(s.tg_sources_file)}
+    priv = private_path(s.tg_sources_file)
+    have = load_sources(priv)
+    known = {x.id for x in have}
+    new = [x for x in old if x.id not in public and x.id not in known and x.id != OLD_PARSERS_GROUP]
+    save_sources(priv, have + new)
+    print(f"✅ В {priv}: добавлено {len(new)}, всего {len(have) + len(new)}. Этот файл в git не попадает.")
+    for x in new:
+        print(f"  {x.label} — {x.title} ({'читается' if x.enabled else 'выключен'})")
 
 
 def cmd_search(s, args) -> None:
@@ -230,6 +265,8 @@ def main() -> None:
     se.add_argument("--hours", type=int, default=24)
     se.add_argument("--limit", type=int, default=15)
     se.add_argument("--source", default="", help="только этот канал/чат (username или часть названия)")
+    rp = sub.add_parser("restore-private")
+    rp.add_argument("--from", dest="from_file", default="", help="старый sources.json вместо истории git")
     args = p.parse_args()
 
     s = load_settings()
@@ -244,6 +281,8 @@ def main() -> None:
             asyncio.run(cmd_collect(s, args))
         except KeyboardInterrupt:
             print("Остановлено.")
+    elif args.cmd == "restore-private":
+        cmd_restore_private(s, args)
     else:
         cmd_search(s, args)
 
