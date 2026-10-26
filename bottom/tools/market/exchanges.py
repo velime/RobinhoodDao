@@ -197,49 +197,96 @@ def _book_stats(book: dict, mid: float, mult: int) -> dict:
     return out
 
 
+BOOK_VENUES = ["binance", "bybit", "okx", "bitget", "gate", "mexc", "kucoin", "bingx", "hyperliquid", "aster"]
+
+
+async def _fetch_book(pool: ExchangePool, ex_id: str, base: str, market: str) -> dict | None:
+    """Raw book of one exchange: {"exchange", "symbol", "mult", "book"}, None when it has no such market."""
+    ex = await pool.get(ex_id)
+    found = find_market(ex, base, market) if ex else None
+    if not found:
+        return None
+    m, mult = found
+    try:
+        book = await asyncio.wait_for(ex.fetch_order_book(m["symbol"], 100), 10)
+    except Exception:  # noqa: BLE001 — some venues reject limit=100
+        book = await asyncio.wait_for(ex.fetch_order_book(m["symbol"]), 10)
+    if not book["bids"] or not book["asks"]:
+        return None
+    return {"exchange": ex_id, "symbol": m["symbol"], "mult": mult, "book": book}
+
+
+def _book_card(raw: dict, market: str) -> dict:
+    book, mult = raw["book"], raw["mult"]
+    bb, ba = book["bids"][0][0], book["asks"][0][0]
+    mid = (bb + ba) / 2
+    return {
+        "exchange": raw["exchange"],
+        "market": market,
+        "symbol": raw["symbol"],
+        "mid": mid / mult,
+        "spread_bps": round((ba - bb) / mid * 10_000, 2),
+        "per_tokens": mult if mult != 1 else None,
+        "depth_levels_fetched": {"bids": len(book["bids"]), "asks": len(book["asks"])},
+        **_book_stats(book, mid, mult),
+    }
+
+
+def combine_books(cards: list[dict]) -> dict:
+    """Books of several exchanges → total depth by band, where the depth is, the biggest walls overall."""
+    total: dict = {}
+    for band in (1, 2, 5):
+        k = f"within_{band}pct"
+        b = sum(c[k]["bids_usd"] for c in cards)
+        a = sum(c[k]["asks_usd"] for c in cards)
+        total[k] = {"bids_usd": b, "asks_usd": a, "bid_share_pct": round(b / (a + b) * 100, 1) if a + b else None}
+    walls = [{**w, "exchange": c["exchange"]} for c in cards for w in c.get("walls") or []]
+    mids = [c["mid"] for c in cards]
+    med = median(mids)
+    depth2 = {c["exchange"]: c["within_2pct"]["bids_usd"] + c["within_2pct"]["asks_usd"] for c in cards}
+    all2 = sum(depth2.values())
+    return {
+        "exchanges": len(cards),
+        "total": total,
+        "depth_share_within_2pct": {ex: round(v / all2 * 100, 1) for ex, v in sorted(depth2.items(), key=lambda kv: -kv[1])}
+        if all2 else {},
+        "biggest_walls": sorted(walls, key=lambda w: -w["usd"])[:8],
+        "mid_spread_across_exchanges_pct": round((max(mids) - min(mids)) / med * 100, 3) if len(mids) > 1 else None,
+    }
+
+
 async def orderbook(pool: ExchangePool, raw_symbol: str, market: str = "perp", exchange: str | None = None) -> dict:
+    """One exchange in detail, or (no exchange) the books of every connected exchange side by side plus the total."""
     base = normalize_base(raw_symbol)
-    order = [exchange] if exchange else ["binance", "bybit", "okx", "bitget", "gate", "mexc", "aster"]
-    for ex_id in order:
-        ex = await pool.get(ex_id)
-        if not ex:
-            continue
-        found = find_market(ex, base, market)
-        if not found:
-            continue
-        m, mult = found
+    if exchange:
         try:
-            try:
-                book = await asyncio.wait_for(ex.fetch_order_book(m["symbol"], 100), 10)
-            except Exception:  # noqa: BLE001 — some venues reject limit=100
-                book = await asyncio.wait_for(ex.fetch_order_book(m["symbol"]), 10)
+            raw = await _fetch_book(pool, exchange, base, market)
         except Exception as e:  # noqa: BLE001
-            if exchange:
-                return {"error": f"{ex_id}: {e}"}
-            continue
-        if not book["bids"] or not book["asks"]:
-            continue
-        bb, ba = book["bids"][0][0], book["asks"][0][0]
-        mid = (bb + ba) / 2
-        return {
-            "exchange": ex_id,
-            "market": market,
-            "symbol": m["symbol"],
-            "mid": mid / mult,
-            "spread_bps": round((ba - bb) / mid * 10_000, 2),
-            "per_tokens": mult if mult != 1 else None,
-            "depth_levels_fetched": {"bids": len(book["bids"]), "asks": len(book["asks"])},
-            **_book_stats(book, mid, mult),
-            "caveat": "стенки могут быть снятыми/спуфинговыми — смотри в динамике",
-        }
-    return {"error": f"стакан {base} ({market}) не найден на {order}"}
+            return {"error": f"{exchange}: {e}"}
+        if raw is None:
+            return {"error": f"стакан {base} ({market}) на {exchange} не найден"}
+        return {**_book_card(raw, market), "caveat": "стенки могут быть снятыми/спуфинговыми — смотри в динамике"}
+    venues = [v for v in BOOK_VENUES if v in pool.ids] + [v for v in pool.ids if v not in BOOK_VENUES]
+    res = await asyncio.gather(*(_fetch_book(pool, v, base, market) for v in venues), return_exceptions=True)
+    cards = [_book_card(r, market) for r in res if isinstance(r, dict)]
+    failed = [v for v, r in zip(venues, res) if isinstance(r, Exception)]
+    if not cards:
+        return {"error": f"стакан {base} ({market}) не найден ни на одной бирже", "checked": venues,
+                "failed": failed or None}
+    per = [{"exchange": c["exchange"], "mid": c["mid"], "spread_bps": c["spread_bps"],
+            "within_1pct": c["within_1pct"], "within_2pct": c["within_2pct"],
+            "walls": sorted(c.get("walls") or [], key=lambda w: -w["usd"])[:3]} for c in cards]
+    return {"base": base, "market": market, "combined": combine_books(cards), "per_exchange": per,
+            "no_market_on": [v for v, r in zip(venues, res) if r is None] or None, "failed": failed or None,
+            "caveat": "стенки могут быть снятыми/спуфинговыми — смотри в динамике; одна биржа подробно — exchange"}
 
 
-async def ohlcv(pool: ExchangePool, raw_symbol: str, timeframe: str, limit: int) -> tuple[list[dict], dict]:
+async def ohlcv(pool: ExchangePool, raw_symbol: str, timeframe: str, limit: int,
+                kinds: tuple[str, ...] = ("perp", "spot")) -> tuple[list[dict], dict]:
     """Candles from the first exchange that has the market (perp first, then spot)."""
     base = normalize_base(raw_symbol)
-    for kind in ("perp", "spot"):
-        for ex_id in ["binance", "bybit", "okx", "bitget", "gate", "mexc", *pool.ids]:
+    for kind in kinds:
+        for ex_id in dict.fromkeys(["binance", "bybit", "okx", "bitget", "gate", "mexc", *pool.ids]):
             ex = await pool.get(ex_id)
             if not ex or not ex.has.get("fetchOHLCV"):
                 continue

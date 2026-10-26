@@ -1,12 +1,14 @@
-"""Market data: CEX prices (spot and perps), candles, order books, derivatives, OI, spreads, funding, transfers."""
+"""Market data: CEX prices (spot, perps, Binance Alpha), candles, order books, derivatives, OI, spreads, funding,
+transfers."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from ..schema import SYM
 from ..symbols import normalize_base
-from . import awtrader, oicard, spreads, transfers
+from . import alpha, awtrader, oicard, spreads, transfers
 from . import derivatives as deriv
 from . import exchanges as exch
 from .indicators import summarize_candles
@@ -16,12 +18,21 @@ log = logging.getLogger(__name__)
 TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"]
 
 
-async def candle_summary(pool: exch.ExchangePool, symbol: str, timeframe: str = "1h", limit: int = 200) -> dict:
-    """Candles with indicators and levels: Binance perp first (it has taker volume for delta/CVD), then any exchange."""
+MARKETS = ["auto", "perp", "spot", "alpha"]
+
+
+async def candle_summary(pool: exch.ExchangePool, symbol: str, timeframe: str = "1h", limit: int = 200,
+                         market: str = "auto") -> dict:
+    """Candles with indicators and levels. auto: Binance perp first (it has taker volume for delta/CVD), then any
+    exchange's perp, then spot; perp / spot: only that market; alpha: Binance Alpha."""
     limit = max(30, min(int(limit), 500))
     if timeframe not in TIMEFRAMES:
         return {"error": f"timeframe должен быть одним из {TIMEFRAMES}"}
-    bn = await pool.get("binance")
+    if market not in MARKETS:
+        return {"error": f"market должен быть одним из {MARKETS}"}
+    if market == "alpha":
+        return await alpha_candles(symbol, timeframe, limit)
+    bn = await pool.get("binance") if market != "spot" else None
     found = exch.find_market(bn, normalize_base(symbol), "perp") if bn else None
     meta: dict = {}
     candles: list[dict] = []
@@ -39,10 +50,43 @@ async def candle_summary(pool: exch.ExchangePool, symbol: str, timeframe: str = 
             log.info("binance klines failed: %s", e)
             candles = []
     if not candles:
-        candles, meta = await exch.ohlcv(pool, symbol, timeframe, limit)
+        kinds = ("perp", "spot") if market == "auto" else (market,)
+        candles, meta = await exch.ohlcv(pool, symbol, timeframe, limit, kinds)
     if not candles:
         return meta
     return {"source": meta, "timeframe": timeframe, **with_range(summarize_candles(candles), candles, timeframe)}
+
+
+async def alpha_candles(symbol: str, timeframe: str, limit: int) -> dict:
+    tok = await alpha.lookup(symbol)
+    if tok is None:
+        return {"error": f"{normalize_base(symbol)} нет на Binance Alpha"}
+    candles = await alpha.klines(tok["alpha_id"], timeframe, limit)
+    if not candles:
+        return {"error": f"свечи Alpha {tok['alpha_id']} не получены"}
+    meta = {"exchange": "binance_alpha", "market": "alpha", "symbol": tok["alpha_id"], "chain": tok["chain"],
+            "contract": tok["contract"]}
+    return {"source": meta, "timeframe": timeframe, **with_range(summarize_candles(candles), candles, timeframe)}
+
+
+async def overview(pool: exch.ExchangePool, symbol: str) -> dict:
+    """market_overview of the CEXes plus the Binance Alpha price when the ticker is listed there."""
+    out, tok = await asyncio.gather(exch.market_overview(pool, symbol), alpha.lookup(symbol))
+    if tok:
+        med = out.get("median_price")
+        tok["dev_from_cex_median_pct"] = round((tok["price"] - med) / med * 100, 2) if med and tok["price"] else None
+        out["binance_alpha"] = tok
+        if tok["dev_from_cex_median_pct"] is not None and abs(tok["dev_from_cex_median_pct"]) > 3:
+            out.setdefault("possible_different_token_or_thin_market", []).append(
+                f"Binance Alpha {tok['symbol']} ({tok['chain']}): {tok['dev_from_cex_median_pct']}% от медианы CEX — "
+                "возможно, другой токен с тем же тикером")
+    return out
+
+
+async def book(pool: exch.ExchangePool, symbol: str, market: str = "perp", exchange: str | None = None) -> dict:
+    if market == "alpha":
+        return await alpha.alpha_book(symbol)
+    return await exch.orderbook(pool, symbol, market, exchange or None)
 
 
 def with_range(s: dict, candles: list[dict], timeframe: str) -> dict:
@@ -62,9 +106,10 @@ def register(tb) -> None:
     tb.add(
         "market_overview",
         "Цены спот и перп на всех подключённых CEX: медиана, разброс между биржами, базис перп/спот по "
-        "каждой бирже, суммарные объёмы 24ч, подозрительные расхождения (другой токен или тонкий рынок).",
+        "каждой бирже, суммарные объёмы 24ч, подозрительные расхождения (другой токен или тонкий рынок); если "
+        "тикер есть на Binance Alpha — его цена, ликвидность и контракт (binance_alpha).",
         {"symbol": SYM}, ["symbol"], "📊 Сверяю цены на биржах",
-        lambda symbol: exch.market_overview(tb.pool, symbol),
+        lambda symbol: overview(tb.pool, symbol),
     )
 
     tb.add(
@@ -81,26 +126,32 @@ def register(tb) -> None:
         "сопротивления (свинг-хаи/лоу = пулы ликвидности) и сколько раз их тестировали (level_touches), "
         "MACD (кросс, рост гистограммы), Боллинджер (ширина, позиция), Фибоначчи последнего импульса, "
         "позиция в 24ч диапазоне, всплеск объёма и числа сделок, дельта покупок/продаж и CVD (если "
-        "Binance-перп). 1m/5m/15m — для скальпа, 1h/4h/1d — для свинга.",
+        "Binance-перп или Alpha). 1m/5m/15m — для скальпа, 1h/4h/1d — для свинга. market: auto (перп, если нет — "
+        "спот), perp, spot или alpha (Binance Alpha).",
         {
             "symbol": SYM,
             "timeframe": {"type": "string", "enum": TIMEFRAMES},
             "limit": {"type": "integer", "description": "Число свечей, 30–500 (по умолчанию 200)"},
+            "market": {"type": "string", "enum": MARKETS},
         },
         ["symbol", "timeframe"], "🕯 Смотрю свечи и уровни",
-        lambda symbol, timeframe="1h", limit=200: candle_summary(tb.pool, symbol, timeframe, limit),
+        lambda symbol, timeframe="1h", limit=200, market="auto": candle_summary(tb.pool, symbol, timeframe, limit,
+                                                                                 market),
     )
 
     tb.add(
         "orderbook",
-        "Стакан: глубина бидов/асков в ±1/2/5% от цены, перекос, спред, крупные стенки с дистанцией до цены.",
+        "Стаканы: глубина бидов/асков в ±1/2/5% от цены, перекос, спред, крупные стенки с дистанцией до цены. "
+        "Без exchange — стаканы ВСЕХ подключённых бирж разом: сводная глубина, у какой биржи сколько глубины, "
+        "крупнейшие стенки рынка с биржей, расхождение цен; с exchange — одна биржа подробно. market: perp, spot "
+        "или alpha (Binance Alpha — своего стакана нет, отдаёт ликвидность DEX-пулов токена).",
         {
             "symbol": SYM,
-            "market": {"type": "string", "enum": ["perp", "spot"]},
-            "exchange": {"type": "string", "description": "id биржи (binance, bybit, okx, mexc...). Пусто — первая, где есть рынок"},
+            "market": {"type": "string", "enum": ["perp", "spot", "alpha"]},
+            "exchange": {"type": "string", "description": "id биржи (binance, bybit, okx, mexc...). Пусто — все биржи"},
         },
-        ["symbol", "market"], "📚 Смотрю стакан",
-        lambda symbol, market="perp", exchange=None: exch.orderbook(tb.pool, symbol, market, exchange or None),
+        ["symbol", "market"], "📚 Смотрю стаканы",
+        lambda symbol, market="perp", exchange=None: book(tb.pool, symbol, market, exchange),
     )
 
     tb.add(
@@ -165,4 +216,16 @@ def register(tb) -> None:
         "конфликты контрактов (другой токен с тем же тикером). Bybit/OKX/MEXC/BingX — только с API-ключом.",
         {"symbol": SYM}, ["symbol"], "🏦 Смотрю депы и выводы",
         lambda symbol: transfers.transfer_status(normalize_base(symbol)),
+    )
+
+    tb.add(
+        "binance_alpha",
+        "Binance Alpha (ончейн-листинги Binance до спота/фьючерсов): с тикером или контрактом — цена, изменение и "
+        "объём 24ч, ликвидность, MCap/FDV, холдеры, сеть и контракт, дата листинга, есть ли уже на споте/фьючерсах "
+        "Binance; токены с тем же тикером. Без тикера — рынок Alpha: топ по объёму, самые сильные движения, свежие "
+        "листинги. Свечи — candles(market=alpha), глубина — orderbook(market=alpha).",
+        {"query": {"type": "string", "description": "Тикер или адрес контракта; пусто — обзор Alpha"},
+         "top": {"type": "integer", "description": "Сколько строк в обзоре (по умолчанию 15)"}},
+        [], "🅰️ Смотрю Binance Alpha",
+        lambda query="", top=15: alpha.binance_alpha(query, top),
     )
