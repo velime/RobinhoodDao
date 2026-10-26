@@ -17,3 +17,5 @@ claude_workspace/live/
 claude_workspace/inbox/
 # question folders of LLM_PROVIDER=agy
 agy_workspace/
+# Telegram exports for self-training (python -m bottom.selftrain)
+references/*.json

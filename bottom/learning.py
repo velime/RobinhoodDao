@@ -60,6 +60,27 @@ F3 — жалоба). Ссылаться можно только на случа
 Если сказать нечего — ответь одним словом: НЕТ."""
 
 
+REFERENCE_REVIEW_PROMPT = """\
+Ты — наставник крипто-аналитика Bottom. Ниже колы сильного авто-колера (референс) с фактическим исходом \
+на реальных 1ч-свечах: тот же строгий оценщик, что и для сетапов Bottom (вход по худшему краю зоны, стоп раньше \
+цели в одной свече, после TP1 — безубыток). Рядом — результаты, которые писали люди, и текущие уроки Bottom.
+Задача: вывести короткие проверяемые уроки для Bottom — что в идеях и сетапах референса работало, а что нет.
+Правила:
+- Урок — одно правило-действие, до 200 символов: в какой ситуации что делать (тип идеи, направление, \
+расстояние до стопа, лимит или от текущих, R:R). Без воды.
+- Опирайся только на исходы ниже. Закономерность — минимум два случая с разными датами; один случай не урок.
+- Учись и на минусах: стопы, выбитые шумом (MAE до стопа, потом цель), лимиты, которые не исполнились, \
+цели, до которых цена не дошла (MFE меньше TP1).
+- Не копируй уровни и цифры конкретных монет — только логику.
+- Каждый урок опирается на случаи из списка: номера в квадратных скобках (R12). Без ссылок урок не принимается.
+- Если случаи подтверждают существующий урок или кандидата — подтверди его; противоречат — отметь.
+Формат ответа — только строки:
++ текст нового урока [R12, R40]
+= #id [R15]
+! #id почему факты противоречат уроку [R16]
+Если сказать нечего — ответь одним словом: НЕТ."""
+
+
 # --------------------------------------------------------------------------- evaluation (pure)
 
 
@@ -135,11 +156,11 @@ _REFS = re.compile(r"\[([^\]]*)\]\s*$")
 
 
 def _split_refs(body: str) -> tuple[str, list[str]]:
-    """'text [S12, F3]' → ('text', ['S12', 'F3'])."""
+    """'text [S12, F3, R7]' → ('text', ['S12', 'F3', 'R7'])."""
     m = _REFS.search(body)
     if not m:
         return body.strip(), []
-    refs = re.findall(r"\b([SF]\d+)\b", m.group(1).upper())
+    refs = re.findall(r"\b([SFR]\d+)\b", m.group(1).upper())
     return body[: m.start()].strip(), list(dict.fromkeys(refs))
 
 
@@ -165,6 +186,14 @@ def parse_review(text: str) -> dict:
             else:
                 out["contest"].append((int(m.group(2)), body, refs))
     return out
+
+
+def _idea(text: str, n: int = 400) -> str:
+    """The idea section of a reference post (what the trade was about), in one line."""
+    i = text.find("💡")
+    part = text[i:] if i >= 0 else text
+    j = part.find("🎯", 1)
+    return " ".join((part[:j] if j > 0 else part).split())[:n]
 
 
 def published_setups(calc_results: list[dict], answer: str) -> list[dict]:
@@ -275,8 +304,9 @@ class Journal:
         self.db.commit()
         return cur.lastrowid
 
-    def add_candidate(self, text: str, refs: list[str]) -> int:
-        ev = [{"ref": r, "day": self._today()} for r in refs]
+    def add_candidate(self, text: str, refs: list[str], days: dict[str, str] | None = None) -> int:
+        """days: when each case happened (reference calls) — otherwise the case counts as seen today."""
+        ev = [{"ref": r, "day": (days or {}).get(r, self._today())} for r in refs]
         cur = self.db.execute(
             "INSERT INTO lessons(created, text, kind, status, evidence, last_confirmed, active) "
             "VALUES (?,?,?,?,?,?,0)",
@@ -295,13 +325,13 @@ class Journal:
         days = {e["day"] for e in evidence}
         return len(refs) >= PROMOTE_MIN_CASES and len(days) >= PROMOTE_MIN_DAYS
 
-    def confirm(self, lesson_id: int, refs: list[str]) -> str | None:
+    def confirm(self, lesson_id: int, refs: list[str], days: dict[str, str] | None = None) -> str | None:
         """Add supporting cases; promote a candidate once it has earned it. Returns new status."""
         les = self._lesson(lesson_id)
         if les is None or les["status"] in ("retired", "expired") or not refs:
             return None
         known = {e["ref"] for e in les["evidence"]}
-        ev = les["evidence"] + [{"ref": r, "day": self._today()} for r in refs if r not in known]
+        ev = les["evidence"] + [{"ref": r, "day": (days or {}).get(r, self._today())} for r in refs if r not in known]
         status = les["status"]
         if status == "candidate" and self.promotable(ev):
             status = "active"
@@ -531,6 +561,62 @@ class Learner:
             self.invalidate()
         return closed
 
+    async def review_reference(self, batch: int = 40) -> dict | None:
+        """Closed reference calls → lessons, the same way as own setups. None when nothing is left to review.
+
+        A case counts on the day the call was made, so a pattern seen on calls of different days can be
+        promoted in a single run (one-time self-training over the whole history)."""
+        from . import reference
+
+        calls = reference.unreviewed(self.journal.db, batch)
+        if not calls:
+            return None
+        days = {f"R{c['id']}": time.strftime("%Y-%m-%d", time.gmtime(c["created"])) for c in calls}
+        lines = ["## Колы референса с исходом"]
+        for c in calls:
+            day, rep = days[f"R{c['id']}"], c["reported"]
+            people = (f" Люди: {rep['pct']}%" if rep.get("pct") else "") + (" Люди: стоп." if rep.get("stop") else "")
+            lines.append(
+                f"[R{c['id']}] {day} {c['kind']} {c['symbol']} {c['direction']} "
+                f"{'лимит' if c['limit_entry'] else 'от текущих'} вход {c['entry_low']}–{c['entry_high']} стоп {c['stop']} "
+                f"цели {c['targets']} план R:R {c['rr_tp1']} типы {c['tags']} → {c['outcome']}, {c['r']}R, "
+                f"MFE {c['mfe_pct']}%, MAE {c['mae_pct']}%.{people}\n  Идея: {_idea(c['text'])}")
+        lines.append("\n## Текущие уроки и кандидаты")
+        lines += [f"#{x['id']} ({x['status']}, случаев: {x['cases']}) {x['text']}" for x in self.journal.all_lessons()] \
+            or ["(нет)"]
+        res = await self.backend.new_session(REFERENCE_REVIEW_PROMPT, [], "\n".join(lines)).step([], allow_tools=False)
+        result = self._apply_review(res.text, set(days), days)
+        reference.mark_reviewed(self.journal.db, [c["id"] for c in calls])
+        self.invalidate()
+        log.info("Обучение на референсе: %s", result)
+        return result
+
+    def _apply_review(self, text: str, shown: set[str], days: dict[str, str] | None = None) -> dict:
+        parsed = {"new": [], "confirm": [], "contest": []}
+        if not text.strip().upper().startswith("НЕТ"):
+            parsed = parse_review(text)
+        # cite, don't invent: only cases actually shown in this review count as evidence
+        new = confirmed = promoted = contested = 0
+        for body, refs in parsed["new"]:
+            refs = [r for r in refs if r in shown]
+            if refs:
+                lid = self.journal.add_candidate(body, refs, days)  # a candidate still has to earn promotion
+                if days and self.journal.promotable(self.journal._lesson(lid)["evidence"]):
+                    self.journal.confirm(lid, refs, days)
+                    promoted += 1
+                new += 1
+        for lid, refs in parsed["confirm"]:
+            refs = [r for r in refs if r in shown]
+            before = (self.journal._lesson(lid) or {}).get("status")
+            after = self.journal.confirm(lid, refs, days)
+            if after:
+                confirmed += 1
+                promoted += int(before == "candidate" and after == "active")
+        for lid, reason, refs in parsed["contest"]:
+            if [r for r in refs if r in shown] and self.journal.contest(lid, reason):
+                contested += 1
+        return {"new": new, "confirmed": confirmed, "promoted": promoted, "contested": contested}
+
     async def review(self) -> dict:
         """Daily: closed setups + feedback → candidates, confirmations, contests; then forgetting."""
         setups, fb = self.journal.unreviewed()
@@ -552,29 +638,9 @@ class Learner:
         lines += [f"#{x['id']} ({x['status']}, случаев: {x['cases']}) {x['text']}" for x in lessons] or ["(нет)"]
         sess = self.backend.new_session(REVIEW_PROMPT, [], "\n".join(lines))
         res = await sess.step([], allow_tools=False)
-        parsed = {"new": [], "confirm": [], "contest": []}
-        if not res.text.strip().upper().startswith("НЕТ"):
-            parsed = parse_review(res.text)
-        # cite, don't invent: only cases actually shown in this review count as evidence
-        new = confirmed = promoted = contested = 0
-        for text, refs in parsed["new"]:
-            refs = [r for r in refs if r in shown]
-            if refs:
-                self.journal.add_candidate(text, refs)  # candidates are never injected on day one
-                new += 1
-        for lid, refs in parsed["confirm"]:
-            refs = [r for r in refs if r in shown]
-            before = (self.journal._lesson(lid) or {}).get("status")
-            after = self.journal.confirm(lid, refs)
-            if after:
-                confirmed += 1
-                promoted += int(before == "candidate" and after == "active")
-        for lid, reason, refs in parsed["contest"]:
-            if [r for r in refs if r in shown] and self.journal.contest(lid, reason):
-                contested += 1
+        result = self._apply_review(res.text, shown)  # own cases count as seen today: never promoted on day one
         self.journal.mark_reviewed([s[0] for s in setups], [f[0] for f in fb])
         self.invalidate()
-        result = {"new": new, "confirmed": confirmed, "promoted": promoted, "contested": contested,
-                  "forgotten": forgotten}
+        result["forgotten"] = forgotten
         log.info("Обучение: %s", result)
         return result

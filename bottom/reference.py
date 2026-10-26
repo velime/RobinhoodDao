@@ -3,7 +3,7 @@
     python -m bottom.reference import <result.json>   # parse calls, watches, updates + people's results
     python -m bottom.reference evaluate [N]           # outcome of each call on real 1h candles
     python -m bottom.reference stats                  # what worked, by idea type and direction
-    python -m bottom.reference bundle <result.json> <name>   # maintainer: ship parsed calls with Bottom
+    python -m bottom.reference bundle <result.json> [name]   # maintainer: merge an export into the shipped calls
 
 Outcomes use the same conservative evaluator as Bottom's own setups (fill at the worst edge, stop first in
 the same candle, TP1 → breakeven). Stats by idea type go into Bottom's experience block, and the agent can
@@ -139,6 +139,17 @@ def tags_of(t: str) -> list[str]:
     return tags
 
 
+def source_of(path: str) -> str:
+    """Source name of an export: the chat's name ("Maga AI calls" → maga-ai-calls), so exports of the same
+    chat made at different times land in one source and their messages are deduplicated by id."""
+    try:
+        name = json.load(open(path, encoding="utf-8")).get("name") or ""
+    except (OSError, ValueError):
+        name = ""
+    slug = re.sub(r"[^\w]+", "-", name.lower()).strip("-")
+    return slug or os.path.splitext(os.path.basename(path))[0]
+
+
 def parse_export(path: str) -> tuple[list[dict], dict]:
     data = json.load(open(path, encoding="utf-8"))
     msgs = [m for m in data.get("messages", []) if m.get("type") == "message"]
@@ -203,6 +214,8 @@ def ensure_table(db) -> None:
         );
         """
     )
+    if "reviewed" not in {r[1] for r in db.execute("PRAGMA table_info(reference_calls)")}:
+        db.execute("ALTER TABLE reference_calls ADD COLUMN reviewed INTEGER DEFAULT 0")
     db.commit()
 
 
@@ -220,18 +233,44 @@ def store(db, records: list[dict], source: str) -> int:
              int(bool(r.get("limit"))), json.dumps(r["tags"], ensure_ascii=False), r["text"],
              json.dumps(rep), "open" if r.get("stop") else "no_setup"))
         n += cur.rowcount
+        if not cur.rowcount and (rep["pct"] or rep["stop"]):  # a later export brought people's results
+            db.execute("UPDATE reference_calls SET reported=? WHERE source=? AND msg_id=?",
+                       (json.dumps(rep), source, r["msg_id"]))
     db.commit()
     return n
 
 
 def load_bundled(db) -> int:
-    """First run: the reference calls shipped with Bottom go into the journal."""
+    """The reference calls shipped with Bottom go into the journal; on every start, so calls added to the
+    bundle by an update reach an existing journal too (known ones are skipped). Returns how many are new."""
     ensure_table(db)
-    if db.execute("SELECT COUNT(*) FROM reference_calls").fetchone()[0] or not os.path.exists(DATA):
+    if not os.path.exists(DATA):
         return 0
     with gzip.open(DATA, "rt", encoding="utf-8") as fh:
         data = json.load(fh)
     return store(db, data["records"], data["source"])
+
+
+def merge_bundle(path: str, source: str | None = None) -> tuple[int, int, dict]:
+    """Maintainer: add an export to the shipped bundle (same message id → the newer parse wins)."""
+    recs, st = parse_export(path)
+    for r in recs:
+        r["text"] = r["text"][:1500]
+    old: dict = {"source": source or source_of(path), "records": []}
+    if os.path.exists(DATA):
+        with gzip.open(DATA, "rt", encoding="utf-8") as fh:
+            old = json.load(fh)
+    by_id = {r["msg_id"]: r for r in old["records"]}
+    added = sum(1 for r in recs if r["msg_id"] not in by_id)
+    for r in recs:
+        prev = by_id.get(r["msg_id"])
+        if prev and prev.get("reported") and not r.get("reported"):  # results replied to in an older export
+            r["reported"], r["reported_stop"] = prev["reported"], prev.get("reported_stop")
+        by_id[r["msg_id"]] = r
+    merged = sorted(by_id.values(), key=lambda r: r["ts"])
+    with gzip.open(DATA, "wt", encoding="utf-8") as fh:
+        json.dump({"source": old["source"], "records": merged}, fh, ensure_ascii=False, separators=(",", ":"))
+    return added, len(merged), st
 
 
 def open_calls(db, limit: int = 30) -> list[dict]:
@@ -251,14 +290,19 @@ def update(db, rid: int, res: dict) -> None:
 
 
 async def candles_since(pool, symbol: str, since_s: float, hours: int) -> list[dict]:
-    """1h candles of the coin's perp (or spot) starting an hour before the call."""
+    """1h candles of the coin's perp (or spot) starting an hour before the call.
+
+    [] means no exchange lists the coin; when no exchange answers at all it raises, so the call stays open
+    for a later run instead of being written off as no_data."""
     from .tools.exchanges import find_market
     from .tools.symbols import normalize_base
 
     base = normalize_base(symbol)
+    reached = False
     for kind in ("perp", "spot"):
         for ex_id in ("binance", "bybit", "okx", "bitget", "gate", "mexc"):
             ex = await pool.get(ex_id)
+            reached = reached or ex is not None
             found = find_market(ex, base, kind) if ex else None
             if not found:
                 continue
@@ -270,6 +314,8 @@ async def candles_since(pool, symbol: str, since_s: float, hours: int) -> list[d
             if raw:
                 return [{"t": r[0], "o": r[1] / mult, "h": r[2] / mult, "l": r[3] / mult, "c": r[4] / mult,
                          "v": r[5] * mult} for r in raw]
+    if not reached:
+        raise RuntimeError("биржи недоступны")
     return []
 
 
@@ -295,6 +341,28 @@ async def evaluate(db, pool, limit: int = 30) -> int:
 
 
 WIN = ("tp1_then_be", "tp2", "tp1_expired", "tp1_open")
+
+
+def unreviewed(db, limit: int = 40) -> list[dict]:
+    """Closed reference calls not yet shown to the lessons review, oldest first."""
+    ensure_table(db)
+    rows = db.execute(
+        "SELECT id, created, kind, symbol, direction, entry_low, entry_high, stop, targets, rr_tp1, limit_entry, tags, "
+        "outcome, r, mfe_pct, mae_pct, reported, text FROM reference_calls "
+        "WHERE status = 'closed' AND COALESCE(reviewed, 0) = 0 ORDER BY created LIMIT ?", (limit,)).fetchall()
+    cols = ("id", "created", "kind", "symbol", "direction", "entry_low", "entry_high", "stop", "targets", "rr_tp1",
+            "limit_entry", "tags", "outcome", "r", "mfe_pct", "mae_pct", "reported", "text")
+    out = []
+    for row in rows:
+        x = dict(zip(cols, row))
+        x["targets"], x["tags"], x["reported"] = json.loads(x["targets"]), json.loads(x["tags"]), json.loads(x["reported"])
+        out.append(x)
+    return out
+
+
+def mark_reviewed(db, ids: list[int]) -> None:
+    db.executemany("UPDATE reference_calls SET reviewed = 1 WHERE id = ?", [(i,) for i in ids])
+    db.commit()
 
 
 def stats(db, min_n: int = 5) -> dict:
@@ -368,16 +436,11 @@ def main() -> None:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "stats"
     if cmd == "import":
         recs, st = parse_export(sys.argv[2])
-        n = store(db, recs, os.path.basename(sys.argv[2]))
+        n = store(db, recs, source_of(sys.argv[2]))
         print(f"разобрано: {st}; новых записей: {n}")
-    elif cmd == "bundle":  # maintainer: ship parsed calls with Bottom
-        recs, st = parse_export(sys.argv[2])
-        for r in recs:
-            r["text"] = r["text"][:1500]
-        with gzip.open(DATA, "wt", encoding="utf-8") as fh:
-            json.dump({"source": sys.argv[3] if len(sys.argv) > 3 else "reference", "records": recs}, fh,
-                      ensure_ascii=False, separators=(",", ":"))
-        print(f"в {DATA}: {len(recs)} записей, {st}")
+    elif cmd == "bundle":  # maintainer: merge an export into the calls shipped with Bottom
+        added, total, st = merge_bundle(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
+        print(f"в {DATA}: новых {added}, всего {total}; {st}")
         return
     elif cmd == "evaluate":
         from .tools.exchanges import ExchangePool

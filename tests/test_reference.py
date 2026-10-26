@@ -164,3 +164,58 @@ async def test_calc_setup_wrapper_adds_status(monkeypatch):
         assert r["verdict"] == "REJECT" and any("за стопом" in p for p in r["problems"])
     finally:
         await tb.close()
+
+
+def test_exports_merge_by_chat(tmp_path, monkeypatch):
+    path = _export(tmp_path)
+    assert ref.source_of(path) == "maga-ai-calls"
+    monkeypatch.setattr(ref, "DATA", str(tmp_path / "bundle.json.gz"))
+    added, total, _ = ref.merge_bundle(path)
+    assert (added, total) == (4, 4)
+    # a later export: the old call without its replies, one new call → results from the first export stay
+    data = json.loads(open(path, encoding="utf-8").read())
+    data["messages"] = [m for m in data["messages"] if m["id"] == 1] + [
+        {"id": 9, "type": "message", "date": "2026-08-09T11:00:00", "from": "Maga caller", "text": RANGES_CALL}]
+    later = tmp_path / "later.json"
+    later.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    added, total, _ = ref.merge_bundle(str(later))
+    assert (added, total) == (1, 5)
+    db = sqlite3.connect(str(tmp_path / "j.db"))
+    assert ref.load_bundled(db) == 5 and ref.load_bundled(db) == 0
+    rep = db.execute("SELECT reported FROM reference_calls WHERE msg_id=1").fetchone()[0]
+    assert json.loads(rep)["pct"] == [12.0, 18.0]
+
+
+async def test_review_reference_writes_lessons(tmp_path):
+    from bottom.learning import Journal, Learner
+    from bottom.llm import StepResult
+
+    journal = Journal(str(tmp_path / "j.db"))
+    recs, _ = ref.parse_export(_export(tmp_path))
+    ref.store(journal.db, recs, "maga-ai-calls")
+    journal.db.execute("UPDATE reference_calls SET status='closed', outcome='tp2', r=2.1 WHERE symbol='CAP'")
+    journal.db.execute("UPDATE reference_calls SET status='closed', outcome='stop', r=-1 WHERE symbol='NMR'")
+    journal.db.commit()
+    ids = [r[0] for r in journal.db.execute("SELECT id FROM reference_calls WHERE status='closed' ORDER BY id")]
+    seen = []
+
+    class Backend:
+        name = "fake"
+
+        def new_session(self, system, history, user):
+            seen.append(user)
+
+            class S:
+                async def step(self, tools, allow_tools):
+                    return StepResult(f"+ Шорт после вертикали без отката к уровню выбивает стопом [R{ids[1]}]\n"
+                                      f"+ Лимитный лонг на шорт-сквизе с фандингом в пользу — работает [R{ids[0]}, R{ids[1]}]\n"
+                                      "+ Выдуманный урок без случаев из списка [R999]")
+            return S()
+
+    learner = Learner(journal, Backend())
+    res = await learner.review_reference()
+    assert res == {"new": 2, "confirmed": 0, "promoted": 1, "contested": 0}
+    assert f"[R{ids[0]}] 2026-08-0" in seen[0] and "лимит" in seen[0] and "Идея: 💡 Идея" in seen[0]
+    lessons = {x["text"][:5]: x["status"] for x in journal.all_lessons()}
+    assert lessons == {"Шорт ": "candidate", "Лимит": "active"}  # one case → candidate; two days → active
+    assert await learner.review_reference() is None  # everything reviewed — a second run has nothing to do
