@@ -19,7 +19,6 @@ HELP = (
     "публичные каналы, часть репозитория; channels/private.json — свои приватные каналы и чаты, в git не попадает. "
     "enabled — читать или нет; manual: true — scan не будет менять enabled; verdict заполняет python -m bottom tg scan."
 )
-KINDS = ("channel", "group", "forum")
 PRIVATE_FILE = "private.json"
 
 

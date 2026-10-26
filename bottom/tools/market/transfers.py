@@ -38,11 +38,6 @@ DEXSCREENER_CHAIN = {"ETH": "ethereum", "BSC": "bsc", "SOL": "solana", "BASE": "
 GECKO_NETWORK = {"ethereum": "eth", "bsc": "bsc", "solana": "solana", "base": "base", "arbitrum": "arbitrum",
                  "polygon": "polygon_pos", "avalanche": "avax", "optimism": "optimism", "tron": "tron",
                  "sui": "sui-network", "ton": "ton", "aptos": "aptos"}
-CHAIN_FROM_DEXSCREENER = {v: k for k, v in DEXSCREENER_CHAIN.items()}
-# rough time for a transfer to be credited (network + exchange confirmations), minutes
-TRANSFER_MINUTES = {"SOL": 2, "TRX": 3, "BSC": 3, "BASE": 5, "ARB": 5, "OP": 5, "POLYGON": 10, "AVAXC": 3,
-                    "SUI": 2, "TON": 2, "APT": 2, "ETH": 8}
-
 
 def chain_id(raw: str | None) -> str:
     s = (raw or "").strip().upper()
@@ -165,13 +160,6 @@ async def all_statuses(force: bool = False) -> tuple[list[dict], dict]:
     return rows, errors
 
 
-def same_contract(a: str | None, b: str | None) -> bool | None:
-    if not a or not b:
-        return None
-    a, b = a.strip(), b.strip()
-    return a.lower() == b.lower() if a.startswith("0x") or b.startswith("0x") else a == b
-
-
 async def transfer_status(base: str) -> dict:
     """Tool: per exchange and network — deposit/withdraw open, fee, contract; contract conflicts."""
     rows, errors = await all_statuses()
@@ -201,28 +189,3 @@ async def transfer_status(base: str) -> dict:
                 if conflicts else None,
         "exchanges_without_data": errors,
     }
-
-
-def route(rows: list[dict], base: str, buy_ex: str, sell_ex: str) -> dict:
-    """Can the coin bought on buy_ex be withdrawn and deposited to sell_ex? Common open networks."""
-    b = {r["chain"]: r for r in rows if r["base"] == base and r["ex"] == buy_ex}
-    s = {r["chain"]: r for r in rows if r["base"] == base and r["ex"] == sell_ex}
-    if not b or not s:
-        return {"status": "unknown", "why": f"нет данных о сетях для {buy_ex if not b else sell_ex}"}
-    common = sorted(set(b) & set(s))
-    if not common:
-        return {"status": "closed", "why": "нет общей сети между биржами"}
-    open_ = [c for c in common if b[c]["withdraw"] and s[c]["deposit"]]
-    mismatch = [c for c in common if same_contract(b[c]["contract"], s[c]["contract"]) is False]
-    if open_:
-        best = min(open_, key=lambda c: TRANSFER_MINUTES.get(c, 15))
-        return {"status": "open", "networks": open_, "fastest": best,
-                "transfer_minutes": TRANSFER_MINUTES.get(best, 15), "withdraw_fee": b[best]["fee"],
-                "contract_mismatch": mismatch or None}
-    why = []
-    for c in common:
-        if not b[c]["withdraw"]:
-            why.append(f"{buy_ex} {c}: вывод закрыт")
-        if not s[c]["deposit"]:
-            why.append(f"{sell_ex} {c}: депозит закрыт")
-    return {"status": "closed", "why": "; ".join(why), "contract_mismatch": mismatch or None}

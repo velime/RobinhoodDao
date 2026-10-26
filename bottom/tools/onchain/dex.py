@@ -18,10 +18,6 @@ GT_HEADERS = {"Accept": "application/json;version=20230302"}
 MIN_POOL_LIQ = 10_000
 
 
-def _same(a: str, b: str) -> bool:
-    return a.lower() == b.lower() if a.startswith("0x") else a == b
-
-
 def best_pools(pairs: list[dict], min_liq: float = MIN_POOL_LIQ) -> dict[str, dict]:
     """DexScreener pairs → {token_address: best pool by liquidity} (token must be the base side)."""
     best: dict[str, dict] = {}

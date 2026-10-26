@@ -86,12 +86,6 @@ def nearest_levels(price: float, levels: dict, n: int = 3) -> dict:
     return {"resistance": above[:n], "support": below[:n]}
 
 
-def range_position(price: float, lo: float, hi: float) -> float | None:
-    if hi <= lo:
-        return None
-    return (price - lo) / (hi - lo) * 100
-
-
 def pct(a: float | None, b: float | None) -> float | None:
     """Percent change from b to a."""
     if a is None or b in (None, 0):

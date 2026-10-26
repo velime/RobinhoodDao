@@ -50,17 +50,9 @@ def _tr(ex, base, chain, dep, wd, contract="0xabc", fee=1.0):
             "withdraw": wd, "fee": fee, "contract": contract}
 
 
-def test_chain_ids_and_route():
+def test_chain_ids():
     assert transfers.chain_id("BEP20") == "BSC" and transfers.chain_id("ERC20") == "ETH"
     assert transfers.chain_id("Arbitrum One") == "ARB"
-    rows = [_tr("mexc", "XYZ", "BEP20", True, True), _tr("gate", "XYZ", "BSC", True, True),
-            _tr("mexc", "XYZ", "ERC20", True, False), _tr("gate", "XYZ", "ETH", True, True)]
-    r = transfers.route(rows, "XYZ", "mexc", "gate")
-    assert r["status"] == "open" and r["networks"] == ["BSC"] and r["fastest"] == "BSC"
-    rows[0]["withdraw"] = False
-    r = transfers.route(rows, "XYZ", "mexc", "gate")
-    assert r["status"] == "closed" and "вывод закрыт" in r["why"]
-    assert transfers.route(rows, "XYZ", "mexc", "okx")["status"] == "unknown"
 
 
 async def test_transfer_status_conflict(monkeypatch):

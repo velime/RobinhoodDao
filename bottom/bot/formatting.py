@@ -10,7 +10,6 @@ from __future__ import annotations
 import html
 import re
 
-TG_LIMIT = 4096
 CHUNK = 3900
 
 _BOLD = re.compile(r"\*\*(.+?)\*\*", re.S)
