@@ -5,6 +5,7 @@ from __future__ import annotations
 from . import crosscheck as cc
 from . import news
 from .ultra import ultra_alerts
+from .x import NITTER_DEFAULT, XReader, x_posts
 
 
 def register(tb) -> None:
@@ -20,26 +21,22 @@ def register(tb) -> None:
         [], "📰 Читаю новости",
         lambda query="", hours=48: news.crypto_news(query, int(hours), s.cryptopanic_api_key),
     )
-    if s.twitterapi_io_key:
-        tb.add(
-            "x_discussion",
-            "X (Twitter): что пишут о токене/теме — топовые и свежие посты без реплаев. Только новости и "
-            "мнения, НЕ источник цифр рынка.",
-            {"topic": {"type": "string", "description": "Тикер или тема"}},
-            ["topic"], "🐦 Читаю X",
-            lambda topic: news.x_discussion(s.twitterapi_io_key, topic),
-        )
-        tb.add(
-            "x_influencers",
-            "X (Twitter): свежие посты отслеживаемых инфлюенсеров и новостных аккаунтов, опционально по теме. "
-            "Для нарратива и настроений. НЕ источник цифр рынка.",
-            {
-                "topic": {"type": "string", "description": "Тикер/тема; пусто — все свежие посты"},
-                "hours": {"type": "integer", "description": "За сколько часов (по умолчанию 24)"},
-            },
-            [], "🗣 Смотрю инфлюенсеров",
-            lambda topic="", hours=24: news.x_influencers(s.twitterapi_io_key, s.x_accounts, topic, int(hours)),
-        )
+    web_keys = {"tavily_key": s.tavily_api_key, "brave_key": s.brave_api_key}
+    reader = XReader(s.twitterapi_io_key, s.x_accounts, s.x_nitter_urls or NITTER_DEFAULT, web_keys)
+    tb.add(
+        "x_posts",
+        "X (Twitter): посты аккаунтов и поиск. query — тикер ($HYPE) или тема; account — аккаунт(ы) через запятую "
+        "или 'watched' (отслеживаемые новостные ленты и инфлюенсеры); query + account — посты этих аккаунтов про "
+        "тему; без обоих — свежее у отслеживаемых. Источник выбирается сам, поле via: twitterapi.io (ключ) → "
+        "зеркала Nitter → лента X для встраивания → поиск site:x.com (только выдержки). Картинки — images, разбор "
+        "через analyze_image. Только новости и мнения, НЕ источник цифр рынка.",
+        {"query": {"type": "string", "description": "Тикер или тема; пусто — без поиска"},
+         "account": {"type": "string", "description": "Аккаунт(ы) через запятую или watched; пусто — весь X"},
+         "hours": {"type": "integer", "description": "За сколько часов (по умолчанию 24, до 336)"},
+         "limit": {"type": "integer", "description": "Сколько постов (по умолчанию 20, до 40)"}},
+        [], "🐦 Читаю X",
+        lambda query="", account="", hours=24, limit=20: x_posts(reader, query, account, hours, limit),
+    )
     if tb.tg_store is not None:
         store = tb.tg_store
 
@@ -84,8 +81,7 @@ def register(tb) -> None:
     async def cross_check(topic: str, hours: int = 24) -> dict:
         return await cc.cross_check(
             topic, hours, tg_store=tb.tg_store, hide_private=not s.tg_show_private,
-            x_key=s.twitterapi_io_key, cryptopanic_key=s.cryptopanic_api_key, pool=tb.pool,
-            web_keys={"tavily_key": s.tavily_api_key, "brave_key": s.brave_api_key},
+            x_reader=reader, cryptopanic_key=s.cryptopanic_api_key, pool=tb.pool, web_keys=web_keys,
         )
 
     tb.add(

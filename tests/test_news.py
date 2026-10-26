@@ -1,4 +1,5 @@
-from bottom.tools.social.news import _parse_rss, _tweet
+from bottom.tools.social.news import _parse_rss
+from bottom.tools.social.x import from_twitterapi
 
 RSS = """<?xml version="1.0"?><rss><channel>
 <item><title>Bitcoin hits $70K</title><description>&lt;p&gt;BTC rallies&lt;/p&gt;</description>
@@ -20,5 +21,5 @@ def test_parse_rss_garbage():
 
 
 def test_tweet_mapping():
-    t = _tweet({"text": "gm", "author": {"userName": "cobie", "followers": 10}, "likeCount": 5, "url": "u"})
+    t = from_twitterapi({"text": "gm", "author": {"userName": "cobie", "followers": 10}, "likeCount": 5, "url": "u"})
     assert t["author"] == "cobie" and t["likes"] == 5 and t["text"] == "gm"

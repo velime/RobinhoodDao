@@ -71,10 +71,8 @@ async def test_toolbox_bad_args_and_schemas():
     assert "нет инструмента" in out["error"]
     for t in tb.schemas():
         assert set(t.parameters["required"]) <= set(t.parameters["properties"]), t.name
-    # X needs a key; web search works without one (free DuckDuckGo fallback)
-    assert "x_discussion" not in tb.tools and {"web_search", "fetch_page"} <= set(tb.tools)
-    tb2 = Toolbox(Settings(exchanges=(), twitterapi_io_key="k"))
-    assert {"x_discussion", "x_influencers"} <= set(tb2.tools)
+    # X and web search work without keys (free fallbacks)
+    assert {"x_posts", "web_search", "fetch_page", "binance_alpha", "orderbook"} <= set(tb.tools)
 
 
 def _msg(text, chat_type, reply_from_id=None):

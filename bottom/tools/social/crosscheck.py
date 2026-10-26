@@ -9,25 +9,11 @@ from __future__ import annotations
 import asyncio
 import re
 import time
-from datetime import datetime
 
 from .. import web as websearch
 from ..market import exchanges as exch
 from ..symbols import normalize_base
 from . import news
-
-_TW_FMT = "%a %b %d %H:%M:%S %z %Y"
-
-
-def _tweet_ts(created_at: str | None) -> float | None:
-    if not created_at:
-        return None
-    for fmt in (_TW_FMT, "%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z"):
-        try:
-            return datetime.strptime(created_at.replace("Z", "+0000"), fmt).timestamp()
-        except ValueError:
-            continue
-    return None
 
 
 def _site(result: dict) -> str:
@@ -97,7 +83,7 @@ def price_reaction(candles: list[dict], first_ts: float | None) -> dict | None:
     }
 
 
-async def cross_check(topic: str, hours: int, *, tg_store=None, hide_private: bool = True, x_key: str = "",
+async def cross_check(topic: str, hours: int, *, tg_store=None, hide_private: bool = True, x_reader=None,
                       cryptopanic_key: str = "", pool=None, web_keys: dict | None = None) -> dict:
     hours = max(1, min(int(hours), 24 * 30))
     now = time.time()
@@ -107,7 +93,7 @@ async def cross_check(topic: str, hours: int, *, tg_store=None, hide_private: bo
         return tg_store.search(topic, hours, limit=60, hide_private=hide_private) if tg_store else None
 
     async def x():
-        return await news.x_discussion(x_key, topic) if x_key else None
+        return await x_reader.search(topic, hours, 30) if x_reader else None
 
     async def px():
         if not (pool and is_ticker):
@@ -140,11 +126,9 @@ async def cross_check(topic: str, hours: int, *, tg_store=None, hide_private: bo
     elif isinstance(news_r, Exception):
         errors["media"] = str(news_r)
     if isinstance(x_r, dict):
-        for tw in (x_r.get("latest") if isinstance(x_r.get("latest"), list) else []) + \
-                  (x_r.get("top") if isinstance(x_r.get("top"), list) else []):
-            ts = _tweet_ts(tw.get("created_at"))
-            if ts and ts >= now - hours * 3600:
-                events.append({"ts": ts, "type": "x", "source": f"@{tw.get('author')}", "text": tw.get("text") or ""})
+        for tw in x_r.get("posts") or []:
+            if tw.get("ts") and tw["ts"] >= now - hours * 3600:
+                events.append({"ts": tw["ts"], "type": "x", "source": f"@{tw.get('author')}", "text": tw.get("text") or ""})
     elif isinstance(x_r, Exception):
         errors["x"] = str(x_r)
     if isinstance(web_r, dict):
@@ -155,7 +139,7 @@ async def cross_check(topic: str, hours: int, *, tg_store=None, hide_private: bo
     elif isinstance(web_r, Exception):
         errors["web"] = str(web_r)
 
-    # de-duplicate the same tweet coming from top+latest
+    # de-duplicate the same post coming twice (top + latest, several mirrors)
     seen, uniq = set(), []
     for e in events:
         k = (e["source"], e["text"][:120])

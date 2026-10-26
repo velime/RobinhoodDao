@@ -6,7 +6,7 @@ from bottom.tg.client import has_image, to_row
 from bottom.tg.sources import Source
 from bottom.tg.store import TgStore
 from bottom.tools.social import crosscheck as cc
-from bottom.tools.social.news import _tweet
+from bottom.tools.social.x import from_twitterapi, tweet_ts
 from bottom.tools.registry import Toolbox
 from bottom.vision import Vision
 
@@ -39,9 +39,9 @@ def test_price_reaction():
 
 
 def test_tweet_ts_and_images():
-    assert cc._tweet_ts("Tue Sep 23 10:00:00 +0000 2026") is not None
-    assert cc._tweet_ts("garbage") is None
-    tw = _tweet({"text": "chart", "extendedEntities": {"media": [
+    assert tweet_ts("Tue Sep 23 10:00:00 +0000 2026") is not None
+    assert tweet_ts("garbage") is None
+    tw = from_twitterapi({"text": "chart", "extendedEntities": {"media": [
         {"type": "photo", "media_url_https": "https://pbs.twimg.com/a.jpg"},
         {"type": "video", "media_url_https": "https://pbs.twimg.com/v.jpg"}]}})
     assert tw["images"] == ["https://pbs.twimg.com/a.jpg"]

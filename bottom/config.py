@@ -77,6 +77,7 @@ class Settings:
     cryptopanic_api_key: str = ""
     twitterapi_io_key: str = ""
     x_accounts: tuple[str, ...] = ()
+    x_nitter_urls: tuple[str, ...] = ()  # free X through Nitter mirrors; empty → the defaults in tools/social/x.py
     tg_api_id: int = 0
     tg_api_hash: str = ""
     tg_session: str = "data/telegram"
@@ -130,6 +131,7 @@ def load_settings() -> Settings:
         cryptopanic_api_key=os.getenv("CRYPTOPANIC_API_KEY", ""),
         twitterapi_io_key=os.getenv("TWITTERAPI_IO_KEY", ""),
         x_accounts=tuple(a.lstrip("@") for a in _list("X_ACCOUNTS", DEFAULT_X_ACCOUNTS)),
+        x_nitter_urls=tuple(_list("X_NITTER_URLS")),
         tg_api_id=_int("TG_API_ID", 0),
         tg_api_hash=os.getenv("TG_API_HASH", ""),
         tg_session=os.getenv("TG_SESSION", "data/telegram"),
