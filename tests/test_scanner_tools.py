@@ -4,7 +4,7 @@ import time
 import pytest
 
 from bottom.tools import feeds, oicard, onchain, spreads, transfers
-from bottom.tools.ultra import classify, combos, parse_alert
+from bottom.tools.ultra import classify, combos
 
 
 def test_base_of():
@@ -164,15 +164,6 @@ def test_book_stats_and_combos():
     assert [x.split()[1] for x in c] == ["#6", "#7", "#8"]
     assert combos({"oi_chg_pct": -10, "price_chg_pct": 3, "long_pct": 35})[0].split()[1] == "#4"
     assert "OI падает + цена растёт" in classify({"oi_chg_pct": -10, "price_chg_pct": 3})["scenario"]
-
-
-def _cfg(tmp_path, **kw):
-    return SignalsConfig(db_path=str(tmp_path / "s.db"), **kw)
-
-
-def _perp(ex, base, fr, price=1.0, vol=1e6, nxt=None, oi=None):
-    return {"ex": ex, "kind": "perp", "base": base, "symbol": base + "USDT", "price": price, "oi_usd": oi,
-            "funding_pct": fr, "interval_h": 8, "next_funding_ms": nxt, "vol24_usd": vol}
 
 
 # ------------------------------------------------------------------ on-chain flows

@@ -59,7 +59,7 @@ def _rich_text(t) -> str:
 def rich_plain(rm) -> str:
     """Rich message (bot's tables, headings, lists, collapsible blocks) → plain text, one block per line.
 
-    Table rows are written as 'cell | cell | cell'; the parsers' board is recognised by that layout."""
+    Table rows are written as 'cell | cell | cell'."""
     out: list[str] = []
 
     def walk(b) -> None:
@@ -114,7 +114,7 @@ def to_row(m, author: str | None = None) -> dict | None:
     image = has_image(m)
     if len(text) < MIN_TEXT and not image:
         return None
-    date = getattr(m, "edit_date", None) or m.date  # an edited message (the pinned board) is as fresh as its edit
+    date = getattr(m, "edit_date", None) or m.date  # an edited message is as fresh as its edit
     date = date if date.tzinfo else date.replace(tzinfo=timezone.utc)
     return {
         "id": m.id,

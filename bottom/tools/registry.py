@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -19,7 +18,7 @@ from . import websearch
 from .indicators import summarize_candles
 from .setup_calc import calc_setup, entry_status, stop_hunt_warnings
 from .ultra import ultra_alerts
-from . import awtrader, indexfeed, oicard, onchain, parsergroup, spreads, transfers
+from . import awtrader, oicard, onchain, spreads, transfers
 
 log = logging.getLogger(__name__)
 
@@ -135,9 +134,6 @@ class Toolbox:
         if warn:
             res["warnings"] = res.get("warnings", []) + warn
         return res
-
-    def _flows(self, base: str, days: int) -> dict:
-        return parsergroup.exchange_flows(self.tg_store, self.s.parser_chat_ids, base, days)
 
     # ---- registration ---------------------------------------------------------
 
@@ -259,47 +255,6 @@ class Toolbox:
              "window_min": {"type": "integer", "description": "Окно, минут (по умолчанию 60)"}},
             ["query"], "🐋 Смотрю сливы на DEX",
             lambda query, window_min=60: onchain.dex_whales(query, max(5, min(int(window_min), 1440))),
-        )
-        self._add(
-            "signals",
-            "Алерты НАШИХ парсеров (читаются из их Telegram-группы): oi — всплески OI, funding — экстремальный "
-            "фандинг и скачки, spreads — спреды фьюч↔фьюч, спот↔фьюч и проверка индексов, flows — ончейн заводы "
-            "на биржи и выводы с бирж (Dep / With), dex — сильные сливы в пулы (Whale perp), status — "
-            "открытие/закрытие сетей. Без тикера — какие монеты чаще всего в сигналах; с тикером — история по "
-            "монете. Основа для «что сейчас интересного / лучший сетап».",
-            {"feed": {"type": "string", "enum": ["", "oi", "funding", "spreads", "flows", "dex", "status"]},
-             "symbol": {"type": "string", "description": "Тикер; пусто — обзор"},
-             "hours": {"type": "integer", "description": "За сколько часов (по умолчанию 24)"}},
-            [], "📡 Смотрю наши сигналы",
-            lambda feed="", symbol="", hours=24: asyncio.to_thread(
-                parsergroup.signals, self.tg_store, s.parser_chat_ids, feed, symbol, max(1, min(int(hours), 720))),
-        )
-        self._add(
-            "spread_board",
-            "Закреплённое сообщение парсера «Актуальные спреды» из его Telegram-группы: все открытые сейчас спреды "
-            "(фьюч↔фьюч, спот↔фьюч) со спредом сейчас, максимумом за время жизни, сколько минут держится и сколько "
-            "помещается в стакан. Для «какие спреды сейчас», «что в закрепе», «лучший спред».",
-            {}, [], "📌 Читаю закреп спредов",
-            lambda: asyncio.to_thread(parsergroup.spread_board, self.tg_store, s.parser_chat_ids),
-        )
-        self._add(
-            "index_spreads",
-            "Отклонение last-цены от индексной цены на фьючерсах 5%+ (канал @spread_last_index из Telegram): "
-            "без тикера — какие монеты чаще и сильнее отклонялись, с тикером — серия по биржам: сторона, процент, "
-            "сколько секунд держится, last и index. Для «индекс», «last-index», «отклонение от индекса».",
-            {"symbol": {"type": "string", "description": "Тикер; пусто — обзор"},
-             "hours": {"type": "integer", "description": "За сколько часов (по умолчанию 24)"}},
-            [], "🧭 Смотрю отклонение от индекса",
-            lambda symbol="", hours=24: asyncio.to_thread(
-                indexfeed.index_spreads, self.tg_store, symbol, max(1, min(int(hours), 720))),
-        )
-        self._add(
-            "exchange_flows",
-            "Ончейн-переводы монеты на биржи и с бирж (по кошелькам бирж): сколько завели/вывели и куда, нетто, "
-            "кто больше всех заводит, крупнейшие переводы. Берётся из алертов парсера Dep / With в группе парсеров.",
-            {"symbol": SYM, "days": {"type": "integer", "description": "За сколько дней (по умолчанию 30)"}},
-            ["symbol"], "🏦 Смотрю заводы и выводы",
-            lambda symbol, days=30: asyncio.to_thread(self._flows, exch.normalize_base(symbol), max(1, min(int(days), 90))),
         )
         self._add(
             "token_fundamentals",
