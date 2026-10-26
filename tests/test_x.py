@@ -153,3 +153,15 @@ async def test_x_posts_routing_and_topic_filter(monkeypatch):
     monkeypatch.setattr("bottom.tools.web.web_search", no_results)
     empty = await x.x_posts(x.XReader(mirrors=()), query="nothing-here")
     assert empty["posts"] == [] and "Постов не нашёл" in empty["note"]
+
+
+async def test_empty_mirror_moves_on(monkeypatch):
+    empty = '<?xml version="1.0"?><rss version="2.0"><channel><title>x</title></channel></rss>'
+    monkeypatch.setattr(x, "http", FakeHttp({"https://m.example/search/rss": Resp(200, empty)}))
+
+    async def web_search(q, recent_days=0, max_results=8, **kw):
+        return {"results": [{"title": "$ABC listed", "snippet": "", "url": "https://x.com/a/status/1", "age_hours": 1}]}
+
+    monkeypatch.setattr("bottom.tools.web.web_search", web_search)
+    res = await x.XReader(mirrors=("https://m.example",)).search("abc")
+    assert res["via"] == "web-search" and res["errors"] == {"nitter": "пусто"} and res["found"] == 1

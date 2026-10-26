@@ -224,60 +224,29 @@ class XReader:
         """Search all of X: $TICKER or a phrase."""
         q = query_of(query)
 
-        async def make() -> dict:
-            errors = {}
-            if self.key:
-                try:
-                    top, latest = await asyncio.gather(
-                        _twitterapi(self.key, f"{q} min_faves:20 -filter:replies -filter:retweets", "Top", 12),
-                        _twitterapi(self.key, f"{q} -filter:replies -filter:retweets", "Latest", 12))
-                    return {"posts": _merge(top + latest), "via": "twitterapi.io"}
-                except Exception as e:  # noqa: BLE001
-                    errors["twitterapi.io"] = f"{type(e).__name__}: {str(e)[:80]}"
-            if self.mirrors:
-                try:
-                    return {"posts": await _nitter(self.mirrors, f"/search/rss?f=tweets&q={quote(q)}"), "via": "nitter",
-                            "errors": errors or None}
-                except Exception as e:  # noqa: BLE001
-                    errors["nitter"] = str(e)[:300]
-            try:
-                return {"posts": await _web(q, hours, self.web_keys), "via": "web-search", "errors": errors or None}
-            except Exception as e:  # noqa: BLE001
-                errors["web-search"] = f"{type(e).__name__}: {str(e)[:80]}"
-            return {"posts": [], "via": None, "errors": errors}
+        async def paid():
+            top, latest = await asyncio.gather(
+                _twitterapi(self.key, f"{q} min_faves:20 -filter:replies -filter:retweets", "Top", 12),
+                _twitterapi(self.key, f"{q} -filter:replies -filter:retweets", "Latest", 12))
+            return _merge(top + latest)
 
-        return _window(await self._cached(("search", q), make), hours, limit)
+        steps = [("twitterapi.io", paid)] if self.key else []
+        if self.mirrors:
+            steps.append(("nitter", lambda: _nitter(self.mirrors, f"/search/rss?f=tweets&q={quote(q)}")))
+        steps.append(("web-search", lambda: _web(q, hours, self.web_keys)))
+        return _window(await self._cached(("search", q), lambda: _first(steps)), hours, limit)
 
     async def timeline(self, user: str, hours: int = 24, limit: int = 20) -> dict:
         user = user.strip().lstrip("@")
-
-        async def make() -> dict:
-            errors = {}
-            if self.key:
-                try:
-                    return {"posts": await _twitterapi(self.key, f"from:{user}", "Latest", 20), "via": "twitterapi.io"}
-                except Exception as e:  # noqa: BLE001
-                    errors["twitterapi.io"] = f"{type(e).__name__}: {str(e)[:80]}"
-            if self.mirrors:
-                try:
-                    return {"posts": await _nitter(self.mirrors, f"/{quote(user)}/rss"), "via": "nitter",
-                            "errors": errors or None}
-                except Exception as e:  # noqa: BLE001
-                    errors["nitter"] = str(e)[:300]
-            try:
-                return {"posts": await _syndication(user), "via": "x-embed", "errors": errors or None,
-                        "note": "лента для встраивания: может отставать или показывать популярное вместо свежего"}
-            except Exception as e:  # noqa: BLE001
-                errors["x-embed"] = f"{type(e).__name__}: {str(e)[:80]}"
-            try:
-                return {"posts": await _web(f"from:{user}", hours, self.web_keys) or await _web(user, hours,
-                                                                                                 self.web_keys),
-                        "via": "web-search", "errors": errors or None}
-            except Exception as e:  # noqa: BLE001
-                errors["web-search"] = f"{type(e).__name__}: {str(e)[:80]}"
-            return {"posts": [], "via": None, "errors": errors}
-
-        return _window(await self._cached(("timeline", user.lower()), make), hours, limit)
+        steps = [("twitterapi.io", lambda: _twitterapi(self.key, f"from:{user}", "Latest", 20))] if self.key else []
+        if self.mirrors:
+            steps.append(("nitter", lambda: _nitter(self.mirrors, f"/{quote(user)}/rss")))
+        steps += [("x-embed", lambda: _syndication(user)),
+                  ("web-search", lambda: _web(f"from:{user}", hours, self.web_keys))]
+        res = await self._cached(("timeline", user.lower()), lambda: _first(steps))
+        if res.get("via") == "x-embed":
+            res["note"] = "лента для встраивания: может отставать или показывать популярное вместо свежего"
+        return _window(res, hours, limit)
 
     async def accounts_feed(self, accounts: list[str], topic: str = "", hours: int = 24, limit: int = 30) -> dict:
         """Latest posts of several accounts, optionally only those about a topic."""
@@ -311,6 +280,21 @@ class XReader:
         if len(accounts) > len(picked):
             out["note"] = f"без ключа читаю первые {len(picked)} из {len(accounts)} аккаунтов"
         return out
+
+
+async def _first(steps) -> dict:
+    """Try the sources in order; the first one with posts wins. An empty answer moves on like an error."""
+    errors = {}
+    for name, make in steps:
+        try:
+            posts = await make()
+        except Exception as e:  # noqa: BLE001
+            errors[name] = f"{type(e).__name__}: {str(e)[:300 if name == 'nitter' else 80]}"
+            continue
+        if posts:
+            return {"posts": posts, "via": name, "errors": errors or None}
+        errors[name] = "пусто"
+    return {"posts": [], "via": None, "errors": errors}
 
 
 def _merge(posts: list[dict]) -> list[dict]:
