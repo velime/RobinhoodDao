@@ -3,5 +3,5 @@
 Клади сюда выгрузки Telegram (`result.json`) темы авто-колера: Telegram Desktop → чат →
 ⋮ → «Экспорт истории чата» → формат JSON, без медиа. Имена файлов любые (`maga-2026-10.json`).
 
-Запуск: `selftrain.bat` (или `python -m bottom.selftrain --agy`). Одни и те же сообщения из разных
+Запуск: `windows\selftrain.bat` (или `python -m bottom selftrain --agy`). Одни и те же сообщения из разных
 выгрузок не дублируются. Сами выгрузки в git не попадают.

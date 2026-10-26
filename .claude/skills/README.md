@@ -27,12 +27,12 @@
 
 | Навык | Зачем в Bottom |
 |---|---|
-| `agent-designer` | архитектура агента, схемы инструментов, оценка логов (`bottom/agent.py`, `bottom/tools/registry.py`) |
+| `agent-designer` | архитектура агента, схемы инструментов, оценка логов (`bottom/agent/loop.py`, `bottom/tools/registry.py`) |
 | `agent-workflow-designer` | паттерны sequential/parallel/router — например, `cross_check` как под-процесс |
-| `agent-memory` | лестница памяти: урок повышается только повторением → применено в `bottom/learning.py` |
-| `memory-engineering` | политика забывания и запрет авто-слияния противоречий → применено в `bottom/learning.py` |
-| `agent-harness` | цикл цель→план→исполнение→проверка; «модель не судит сама себя» → `bottom/grounding.py` |
-| `loop-library` | аудит ограниченных циклов → бюджет шагов, таймауты, кеш повторов в `bottom/agent.py` |
+| `agent-memory` | лестница памяти: урок повышается только повторением → применено в `bottom/learning/` |
+| `memory-engineering` | политика забывания и запрет авто-слияния противоречий → применено в `bottom/learning/` |
+| `agent-harness` | цикл цель→план→исполнение→проверка; «модель не судит сама себя» → `bottom/agent/grounding.py` |
+| `loop-library` | аудит ограниченных циклов → бюджет шагов, таймауты, кеш повторов в `bottom/agent/loop.py` |
 | `rag-architect` | если понадобится смысловой поиск по постам вместо SQL (`bottom/tg/store.py`) |
 | `zero-hallucination-coder` | дисциплина Discuss→Map→Decompose→Execute→Verify при крупных изменениях |
 | `skill-doctor` | оценка навыков Claude Code по истории локальных сессий (не промптов бота) |
