@@ -198,10 +198,6 @@ async def test_agent_returns_published_setups_and_uses_lessons(tmp_path):
     j.add_lesson("Проверяй track_record перед сетапом", "manual")
     tb = Toolbox(s, journal=j)
 
-    async def no_atr(symbol):
-        return None
-
-    tb._atr_pct_1h = no_atr
     agent = Agent(SetupBackend(), tb, "Europe/Kyiv", 12, learner=Learner(j))
     res = await agent.answer("дай сетап RAY", [])
     assert len(res.setups) == 1 and res.setups[0]["stop"] == 1.373

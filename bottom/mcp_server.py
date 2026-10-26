@@ -16,7 +16,8 @@ import os
 import sys
 import threading
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # not from config: .env loads after chdir
+
 PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 log = logging.getLogger("bottom.mcp")

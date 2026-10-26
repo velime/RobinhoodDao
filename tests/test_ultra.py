@@ -1,10 +1,11 @@
 import time
 
 from bottom.tg.store import TgStore
-from bottom.tools import derivatives as deriv
-from bottom.tools import fundamentals as fund
-from bottom.tools.indicators import bollinger, fib_last_impulse, level_touches, macd, summarize_candles
-from bottom.tools.ultra import classify, parse_alert, score, summarize, ultra_alerts
+from bottom.tools.market import derivatives as deriv
+from bottom.tools.onchain import tokens as fund
+from bottom.tools.market.indicators import bollinger, fib_last_impulse, level_touches, macd, summarize_candles
+from bottom.tools.market.oimethod import classify
+from bottom.tools.social.ultra import parse_alert, score, summarize, ultra_alerts
 
 VIC = """$VIC | Binance
 OI: +116.12% за 4ч | +40.12% за 37м

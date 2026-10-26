@@ -3,10 +3,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from bottom import agy
+from bottom.llm import agy
 from bottom.agent import Agent
 from bottom.config import LLMConfig, RiskRules
-from bottom.llm import _single
+from bottom.llm import single
 from bottom.tools.registry import Tool
 
 # A stand-in for `agy -p`: logs each run, answers by turn. A .py path runs through the current Python,
@@ -71,7 +71,7 @@ def test_parse_reply():
 
 async def test_agy_agent_loop(fake_agy):
     toolbox = _Toolbox()
-    backend = _single(LLMConfig(provider="agy"))
+    backend = single(LLMConfig(provider="agy"))
     assert backend.name == "agy"
     agent = Agent(backend, toolbox, "Europe/Kyiv", 6)
     r = await agent.answer("что по BTC?", [("user", "привет")])

@@ -4,7 +4,7 @@ import stat
 import sys
 from types import SimpleNamespace
 
-from bottom import claude_code as cc
+from bottom.llm import claude_code as cc
 from bottom.config import RiskRules
 
 FAKE = r'''#!{py}
@@ -109,9 +109,9 @@ async def test_file_vision(tmp_path, monkeypatch):
 
 def test_make_vision_and_backend_for_claude_code():
     from bottom.config import LLMConfig
-    from bottom.llm import _single
+    from bottom.llm import single
     from bottom.vision import make_vision
 
     s = SimpleNamespace(vision_llm=None, llm=LLMConfig(provider="claude_code"), llm_fallback=None, vision_daily_limit=5)
     assert isinstance(make_vision(s), cc.FileVision)
-    assert _single(LLMConfig(provider="claude_code", model="opus")).name == "claude-code:opus"
+    assert single(LLMConfig(provider="claude_code", model="opus")).name == "claude-code:opus"

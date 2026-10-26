@@ -1,4 +1,4 @@
-from bottom.tools import websearch
+from bottom.tools import web as websearch
 
 
 async def test_fallback_chain(monkeypatch):

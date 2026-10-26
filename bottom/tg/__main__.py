@@ -1,9 +1,9 @@
 """Telegram CLI (все источники читаются через твой аккаунт).
 
-  python -m bottom.tg login              — войти в аккаунт (один раз, создаёт файл сессии)
-  python -m bottom.tg scan [опции]       — один раз проверить источники: крипта или нет
-  python -m bottom.tg collect [--once]   — собирать сообщения без бота (--once: только догрузить и выйти)
-  python -m bottom.tg search [ТИКЕР]     — посмотреть, что собрано (упоминания тикера / что обсуждают)
+  python -m bottom tg login              — войти в аккаунт (один раз, создаёт файл сессии)
+  python -m bottom tg scan [опции]       — один раз проверить источники: крипта или нет
+  python -m bottom tg collect [--once]   — собирать сообщения без бота (--once: только догрузить и выйти)
+  python -m bottom tg search [ТИКЕР]     — посмотреть, что собрано (упоминания тикера / что обсуждают)
 """
 
 from __future__ import annotations
@@ -214,7 +214,7 @@ def cmd_search(s, args) -> None:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(prog="python -m bottom.tg")
+    p = argparse.ArgumentParser(prog="python -m bottom tg")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("login")
     sc = sub.add_parser("scan")

@@ -4,10 +4,10 @@ from types import SimpleNamespace
 from aiogram.enums import ChatType
 
 from bottom.agent import LIMIT_NOTE, Agent
-from bottom.bot import extract_question
+from bottom.bot.telegram import extract_question
 from bottom.config import Settings
 from bottom.llm import Session, StepResult, ToolCall
-from bottom.storage import Storage
+from bottom.bot.storage import Storage
 from bottom.tools.registry import Toolbox
 
 
@@ -102,7 +102,7 @@ def test_storage(tmp_path):
 
 
 def test_extract_question_bare_mention_under_someones_message():
-    from bottom.bot import REPLIED_ONLY_QUESTION
+    from bottom.bot.telegram import REPLIED_ONLY_QUESTION
 
     assert extract_question(_msg("@bottom_bot", ChatType.SUPERGROUP, reply_from_id=2), "bottom_bot", 1) == REPLIED_ONLY_QUESTION
     assert extract_question(_msg("@bottom_bot", ChatType.SUPERGROUP), "bottom_bot", 1) is None

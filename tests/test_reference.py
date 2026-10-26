@@ -1,8 +1,8 @@
 import json
 import sqlite3
 
-from bottom import reference as ref
-from bottom.tools.setup_calc import entry_status, stop_hunt_warnings
+from bottom.learning import reference as ref
+from bottom.tools.setups.calc import entry_status, stop_hunt_warnings
 
 LIMIT_CALL = """📣 Maga AI call — $CAP
 
@@ -149,18 +149,20 @@ async def test_calc_setup_wrapper_adds_status(monkeypatch):
 
     tb = Toolbox(Settings())
 
-    async def fake_candles(symbol, tf, limit=200):
+    async def fake_candles(pool, symbol, tf, limit=200):
         if tf == "1h":
             return {"atr14_pct": 0.8, "last_close": 1.07, "levels": {"support": [0.94, 0.9], "resistance": [1.2]},
                     "range_24h": {"high": 1.12, "low": 0.97}}
         return {"levels": {"support": [0.93], "resistance": []}}
 
-    monkeypatch.setattr(tb, "_candles", fake_candles)
+    from bottom.tools import setups
+
+    monkeypatch.setattr(setups, "candle_summary", fake_candles)
     try:
-        r = await tb._calc_setup("ABC", "long", 1.0, 0.95, [1.10, 1.2], 1.02)
+        r = await setups.checked_setup(tb, "ABC", "long", 1.0, 0.95, [1.10, 1.2], 1.02)
         assert r["entry_status"]["status"] == "gone"
         assert any("сразу за стопом" in w for w in r.get("warnings", []))
-        r = await tb._calc_setup("ABC", "long", 1.10, 1.08, [1.3], 1.12)
+        r = await setups.checked_setup(tb, "ABC", "long", 1.10, 1.08, [1.3], 1.12)
         assert r["verdict"] == "REJECT" and any("за стопом" in p for p in r["problems"])
     finally:
         await tb.close()

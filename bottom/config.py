@@ -9,6 +9,8 @@ from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv(usecwd=True))
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # the project folder
+
 
 # Crypto news feeds and influencers on X. Override with X_ACCOUNTS in .env.
 DEFAULT_X_ACCOUNTS = (

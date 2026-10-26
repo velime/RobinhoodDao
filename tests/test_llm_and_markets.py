@@ -1,9 +1,9 @@
 from types import SimpleNamespace
 
 from bottom.config import Settings
-from bottom.llm import AnthropicSession, OpenAICompatSession
-from bottom.prompts import FAQ
-from bottom.tools.exchanges import find_market
+from bottom.llm.api import AnthropicSession, OpenAICompatSession
+from bottom.agent.prompts import FAQ
+from bottom.tools.market.exchanges import find_market
 from bottom.tools.registry import Toolbox
 
 

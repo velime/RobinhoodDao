@@ -3,13 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 from bottom.config import LLMConfig, Settings, load_settings
-from bottom.llm import (
-    FailoverBackend,
-    OpenAICompatBackend,
-    OpenAICompatSession,
-    cooldown_for,
-    make_backend,
-)
+from bottom.llm import FailoverBackend, cooldown_for, make_backend
+from bottom.llm.api import OpenAICompatBackend, OpenAICompatSession
 
 
 class RateLimited(Exception):

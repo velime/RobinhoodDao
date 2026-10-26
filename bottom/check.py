@@ -1,4 +1,4 @@
-"""Check the setup: python -m bottom.check
+"""Check the setup: python -m bottom check
 
 Verifies .env and that every service answers, with a hint for each problem.
 """
@@ -22,13 +22,13 @@ def static_checks(s: Settings) -> list[tuple[str, str, str]]:
     if not s.telegram_token or ":" not in s.telegram_token:
         out.append((FAIL, "TELEGRAM_BOT_TOKEN", "пусто или неверный формат — возьми токен у @BotFather (вида 123456:ABC...)"))
     if s.llm.provider == "claude_code":
-        from .claude_code import find_claude
+        from .llm.claude_code import find_claude
 
         exe = find_claude()
         out.append((OK, "Claude Code", exe) if exe else
                    (FAIL, "Claude Code", "не найден — запусти claude_setup.bat (или укажи CLAUDE_BIN)"))
     elif s.llm.provider == "agy":
-        from .agy import find_agy
+        from .llm.agy import find_agy
 
         exe = find_agy()
         out.append((OK, "Antigravity CLI (agy)", exe) if exe else
@@ -70,10 +70,10 @@ async def _check_bot(token: str) -> tuple[str, str, str]:
 
 
 async def _check_llm(label: str, cfg: LLMConfig) -> tuple[str, str, str]:
-    from .llm import _single
+    from .llm import single
 
     try:
-        sess = _single(cfg).new_session("Отвечай одним словом.", [], "Скажи: OK")
+        sess = single(cfg).new_session("Отвечай одним словом.", [], "Скажи: OK")
         res = await asyncio.wait_for(sess.step([], allow_tools=False), 400 if cfg.provider == "agy" else 60)
         return OK, label, f"{cfg.model or cfg.provider} отвечает: {res.text.strip()[:30]!r}"
     except Exception as e:  # noqa: BLE001
@@ -114,5 +114,9 @@ async def run() -> int:
     return 1 if fails else 0
 
 
-if __name__ == "__main__":
+def main() -> None:
     sys.exit(asyncio.run(run()))
+
+
+if __name__ == "__main__":
+    main()

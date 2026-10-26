@@ -5,8 +5,8 @@ from bottom.config import LLMConfig, Settings
 from bottom.tg.client import has_image, to_row
 from bottom.tg.sources import Source
 from bottom.tg.store import TgStore
-from bottom.tools import crosscheck as cc
-from bottom.tools.news import _tweet
+from bottom.tools.social import crosscheck as cc
+from bottom.tools.social.news import _tweet
 from bottom.tools.registry import Toolbox
 from bottom.vision import Vision
 

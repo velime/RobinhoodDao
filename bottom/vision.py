@@ -116,11 +116,11 @@ async def _call(cfg: LLMConfig, data: bytes, mime: str, prompt: str) -> str:
 
 def make_vision(s: Settings):
     if s.vision_llm is None and s.llm.provider == "claude_code":
-        from .claude_code import FileVision  # Claude Code opens the picture itself
+        from .llm.claude_code import FileVision  # Claude Code opens the picture itself
 
         return FileVision()
     if s.vision_llm is None and s.llm.provider == "agy":
-        from .agy import AgyBackend, AgyVision  # Gemini opens the picture itself
+        from .llm.agy import AgyBackend, AgyVision  # Gemini opens the picture itself
 
         return AgyVision(AgyBackend(s.llm.model), s.vision_daily_limit)
     return Vision(s.vision_llm or s.llm, s.llm_fallback, s.vision_daily_limit)

@@ -3,8 +3,9 @@ import time
 
 import pytest
 
-from bottom.tools import feeds, oicard, onchain, spreads, transfers
-from bottom.tools.ultra import classify, combos
+from bottom.tools.market import feeds, oicard, spreads, transfers
+from bottom.tools.onchain import dex as onchain
+from bottom.tools.market.oimethod import classify, combos
 
 
 def test_base_of():
@@ -205,8 +206,8 @@ class SimpleNamespaceTool:
 
 
 async def test_aster_feeds_and_derivatives(monkeypatch):
-    from bottom.tools import derivatives as dv
-    from bottom.tools import feeds as fd
+    from bottom.tools.market import derivatives as dv
+    from bottom.tools.market import feeds as fd
 
     async def fake(url, params=None, headers=None):
         if url.endswith("/fapi/v1/premiumIndex") and not params:

@@ -1,8 +1,7 @@
 import asyncio
 import json
 
-from bottom import grounding
-from bottom.agent import Agent
+from bottom.agent import Agent, grounding
 from bottom.config import Settings
 from bottom.llm import Session, StepResult, ToolCall
 from bottom.tools import registry

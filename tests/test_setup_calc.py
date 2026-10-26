@@ -1,5 +1,5 @@
 from bottom.config import RiskRules
-from bottom.tools.setup_calc import calc_setup
+from bottom.tools.setups.calc import calc_setup
 
 RULES = RiskRules(min_rr=1.3, min_stop_pct_major=1.5, min_stop_pct_alt=3.0, min_stop_atr_mult=1.5)
 

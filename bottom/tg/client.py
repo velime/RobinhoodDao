@@ -323,7 +323,7 @@ class Collector:
     async def start(self) -> None:
         await self.client.connect()
         if not await self.client.is_user_authorized():
-            raise RuntimeError("Telegram-сессия не авторизована: запусти `python -m bottom.tg login`")
+            raise RuntimeError("Telegram-сессия не авторизована: запусти `python -m bottom tg login`")
         dialogs = await load_dialogs(self.client)
         for src in self.sources:
             ent = await resolve(self.client, src, dialogs)
