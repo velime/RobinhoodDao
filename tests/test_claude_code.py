@@ -31,8 +31,8 @@ out({{"type": "result", "subtype": "success", "session_id": "s1",
 
 def _fake(tmp_path):
     log = tmp_path / "calls.jsonl"
-    p = tmp_path / "claude"
-    p.write_text(FAKE.format(py=sys.executable, log=str(log)))
+    p = tmp_path / "claude.py"
+    p.write_text(FAKE.format(py=sys.executable, log=str(log)), encoding="utf-8")
     p.chmod(p.stat().st_mode | stat.S_IEXEC)
     return str(p), log
 

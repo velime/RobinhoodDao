@@ -15,3 +15,5 @@ claude_workspace/.mcp.json
 claude_workspace/.claude/
 claude_workspace/live/
 claude_workspace/inbox/
+# question folders of LLM_PROVIDER=agy
+agy_workspace/

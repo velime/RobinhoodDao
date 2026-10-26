@@ -45,7 +45,7 @@ class RiskRules:
 
 @dataclass(frozen=True)
 class LLMConfig:
-    provider: str = "openai"  # "openai" (any OpenAI-compatible API) or "anthropic"
+    provider: str = "openai"  # "openai" (any OpenAI-compatible API), "anthropic", "claude_code" or "agy"
     base_url: str = ""
     api_key: str = ""
     model: str = ""
@@ -94,7 +94,7 @@ class Settings:
 def _llm(prefix: str) -> LLMConfig | None:
     model = os.getenv(f"{prefix}MODEL", "")
     provider = os.getenv(f"{prefix}PROVIDER", "openai").lower()
-    if not model and provider not in ("anthropic", "claude_code"):
+    if not model and provider not in ("anthropic", "claude_code", "agy"):
         return None
     key = os.getenv(f"{prefix}API_KEY", "")
     if provider == "anthropic":

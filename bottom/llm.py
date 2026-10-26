@@ -276,6 +276,10 @@ def _single(cfg: LLMConfig):
         from .claude_code import ClaudeCodeBackend
 
         return ClaudeCodeBackend(cfg.model)
+    if cfg.provider == "agy":
+        from .agy import AgyBackend
+
+        return AgyBackend(cfg.model)
     return AnthropicBackend(cfg) if cfg.provider == "anthropic" else OpenAICompatBackend(cfg)
 
 

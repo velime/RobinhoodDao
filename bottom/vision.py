@@ -119,4 +119,8 @@ def make_vision(s: Settings):
         from .claude_code import FileVision  # Claude Code opens the picture itself
 
         return FileVision()
+    if s.vision_llm is None and s.llm.provider == "agy":
+        from .agy import AgyBackend, AgyVision  # Gemini opens the picture itself
+
+        return AgyVision(AgyBackend(s.llm.model), s.vision_daily_limit)
     return Vision(s.vision_llm or s.llm, s.llm_fallback, s.vision_daily_limit)

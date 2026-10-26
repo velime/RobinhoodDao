@@ -167,7 +167,8 @@ async def run_claude(prompt: str, *, model: str = "", on_event=None, timeout: fl
     if not exe:
         raise ClaudeCodeError("Claude Code не найден: установи (claude_setup.bat) или укажи CLAUDE_BIN")
     allowed = ALLOWED_TOOLS if allowed is None else allowed
-    cmd = [exe, "-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config"]
+    cmd = [sys.executable, exe] if exe.endswith(".py") else [exe]  # a .py stand-in runs the same on every OS
+    cmd += ["-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config"]
     if allowed:  # built-ins limited to web + reading; Bash/Edit/Write are not even available
         cmd += ["--tools", "WebSearch,WebFetch,Read", "--mcp-config", os.path.join(WORKSPACE, ".mcp.json"),
                 "--allowedTools", *allowed]

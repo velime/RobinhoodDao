@@ -27,6 +27,12 @@ def static_checks(s: Settings) -> list[tuple[str, str, str]]:
         exe = find_claude()
         out.append((OK, "Claude Code", exe) if exe else
                    (FAIL, "Claude Code", "не найден — запусти claude_setup.bat (или укажи CLAUDE_BIN)"))
+    elif s.llm.provider == "agy":
+        from .agy import find_agy
+
+        exe = find_agy()
+        out.append((OK, "Antigravity CLI (agy)", exe) if exe else
+                   (FAIL, "Antigravity CLI (agy)", "не найден — установи с antigravity.google, войди (agy) или укажи AGY_PATH"))
     else:
         if not s.llm.model:
             out.append((FAIL, "LLM_MODEL", "не задана модель — впиши имя модели Gemini из AI Studio"))
@@ -68,7 +74,7 @@ async def _check_llm(label: str, cfg: LLMConfig) -> tuple[str, str, str]:
 
     try:
         sess = _single(cfg).new_session("Отвечай одним словом.", [], "Скажи: OK")
-        res = await asyncio.wait_for(sess.step([], allow_tools=False), 60)
+        res = await asyncio.wait_for(sess.step([], allow_tools=False), 400 if cfg.provider == "agy" else 60)
         return OK, label, f"{cfg.model or cfg.provider} отвечает: {res.text.strip()[:30]!r}"
     except Exception as e:  # noqa: BLE001
         return FAIL, label, f"{cfg.model or cfg.provider}: {type(e).__name__}: {str(e)[:200]}"
@@ -90,7 +96,7 @@ async def run() -> int:
     net = []
     if s.telegram_token:
         net.append(_check_bot(s.telegram_token))
-    if s.llm.model or s.llm.provider == "claude_code":
+    if s.llm.model or s.llm.provider in ("claude_code", "agy"):
         net.append(_check_llm("Основная модель", s.llm))
     if s.llm_fallback:
         net.append(_check_llm("Запасная модель", s.llm_fallback))

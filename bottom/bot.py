@@ -25,6 +25,7 @@ log = logging.getLogger(__name__)
 
 EDIT_INTERVAL = 1.2  # Telegram rate-limits message edits
 QUESTION_TIMEOUT = 300  # wall-clock limit for one answer, seconds
+AGY_QUESTION_TIMEOUT = 900  # agy turns take tens of seconds each
 THINKING = ("💎 Думаю.", "💎 Думаю..", "💎 Думаю...")
 
 
@@ -271,7 +272,7 @@ class BottomBot:
         try:
             result = await asyncio.wait_for(
                 self.agent.answer(question, self.storage.history(conv), on_status=status.update, step_budget=left),
-                QUESTION_TIMEOUT,
+                AGY_QUESTION_TIMEOUT if self.s.llm.provider == "agy" else QUESTION_TIMEOUT,
             )
         except asyncio.TimeoutError:
             await status.msg.edit_text("⏳ Разбор занял слишком долго — источники тормозят. Попробуй ещё раз или "
