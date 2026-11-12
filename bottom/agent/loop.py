@@ -135,4 +135,6 @@ class Agent:
         if call.bad_args is not None:
             return '{"error":"аргументы не являются валидным JSON — повтори вызов"}'
         log.info("tool %s %s", call.name, call.args)
-        return await self.toolbox.execute(call.name, call.args)
+        out = await self.toolbox.execute(call.name, call.args)
+        log.info("tool %s → %d chars: %s", call.name, len(out), out[:200].replace("\n", " "))
+        return out

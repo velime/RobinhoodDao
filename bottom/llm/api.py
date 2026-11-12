@@ -53,8 +53,14 @@ class OpenAICompatSession(Session):
                 calls.append(ToolCall(tc.id, tc.function.name, {}, bad_args=raw))
         entry: dict = {"role": "assistant", "content": msg.content or (None if msg.tool_calls else "")}
         if msg.tool_calls:
+            # Gemini 3 needs the thought_signature (extra_content) echoed back with the tool call, or the next request is a 400
             entry["tool_calls"] = [
-                {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments or "{}"}}
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments or "{}"},
+                    **(tc.model_extra or {}),
+                }
                 for tc in msg.tool_calls
             ]
         self.messages.append(entry)

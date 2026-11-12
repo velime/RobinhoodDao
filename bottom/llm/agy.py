@@ -79,6 +79,9 @@ async def run_agy(prompt: str, cwd: str, *, conversation: str | None = None, mod
     cmd += ["--output-format", "json", "--dangerously-skip-permissions"]
     if conversation:
         cmd += ["--conversation", conversation]
+    if model.startswith("gemini-3.8"):  # effort is part of the model id here (-low/-medium/-high); --effort is rejected
+        model = f"{re.sub(r'-(low|medium|high)$', '', model)}-{effort or 'medium'}"
+        effort = ""
     if model:
         cmd += ["--model", model]
     if effort:
@@ -155,10 +158,24 @@ def _prune() -> None:
             pass
 
 
+_DEEP = ("сетап", "setup", "разбор", "анализ", "вход", "стоп", "тейк", "лонг", "шорт", "long", "short", "почему", "сравни", "стратег")
+
+
+def pick_effort(question: str) -> str:
+    """Effort from the user's question: a quick price/lookup is low, a trade analysis is high."""
+    q = question.lower()
+    if len(q) > 400 or sum(w in q for w in _DEEP) >= 2:
+        return "high"
+    if len(q) < 60 and not any(w in q for w in _DEEP):
+        return "low"
+    return "medium"
+
+
 class AgySession(Session):
     def __init__(self, backend: "AgyBackend", system: str, history: list[tuple[str, str]], user: str):
         self.b = backend
         self.system, self.history, self.user = system, history, user
+        self.effort = pick_effort(user) if backend.effort == "auto" else backend.effort
         self.cwd = os.path.join(WORK_ROOT, f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}")
         self.conversation: str | None = None
         self.pending: list[str] = []  # tool results and notes for the next turn
@@ -185,7 +202,7 @@ class AgySession(Session):
             prompt = "\n\n".join(self.pending)
         self.pending = []
         r = await run_agy(prompt, self.cwd, conversation=self.conversation, model=self.b.model,
-                          effort=self.b.effort, timeout_min=self.b.timeout_min)
+                          effort=self.effort, timeout_min=self.b.timeout_min)
         self.conversation = r.get("conversation_id") or self.conversation
         if not tools:
             return StepResult(r["response"])
@@ -205,7 +222,7 @@ class AgySession(Session):
 class AgyBackend:
     def __init__(self, model: str = "", effort: str | None = None, timeout_min: float | None = None):
         self.model = model
-        self.effort = os.getenv("AGY_EFFORT", "low") if effort is None else effort
+        self.effort = os.getenv("AGY_EFFORT", "auto") if effort is None else effort
         self.timeout_min = float(os.getenv("AGY_TIMEOUT_MIN", "5")) if timeout_min is None else timeout_min
         self.name = f"agy{':' + model if model else ''}"
 
